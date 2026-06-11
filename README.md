@@ -15,7 +15,7 @@ HERMES_API_SERVER_KEY=local-hermes-agent
 ```
 
 3. Start the `Iphish Agent` Application.
-4. Open the Hermes dashboard from Workbench.
+4. Click **Open**. Workbench opens a browser terminal running the Hermes TUI.
 
 The Workbench Application starts one Docker container:
 
@@ -26,8 +26,8 @@ xpectra-iphish-agent
 Hermes listens on:
 
 ```text
-Dashboard: http://127.0.0.1:9119
-API:       http://127.0.0.1:8642/v1
+TUI web terminal: http://127.0.0.1:9119
+API:              http://127.0.0.1:8642/v1
 ```
 
 No GoPhish, NemoClaw, OpenShell, or legacy IPhish files are included in this
