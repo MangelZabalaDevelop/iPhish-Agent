@@ -1,5 +1,16 @@
 #!/bin/bash
-# This file contains bash commands that will be executed at the end of the container build process,
-# after all system packages and programming language specific package have been installed.
-#
-# Note: This file may be removed if you don't need to use it
+set -euo pipefail
+
+DOCKER_GID="${DOCKER_GID:-988}"
+
+if getent group docker >/dev/null; then
+  current_gid="$(getent group docker | cut -d: -f3)"
+  if [ "$current_gid" != "$DOCKER_GID" ]; then
+    sudo groupmod -g "$DOCKER_GID" docker || true
+  fi
+else
+  sudo groupadd -g "$DOCKER_GID" docker || true
+fi
+
+sudo usermod -aG docker workbench || true
+sudo ln -sfn /host-run/docker.sock /var/run/docker.sock

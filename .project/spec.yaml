@@ -33,24 +33,7 @@ environment:
         labels:
             - ubuntu
             - python3
-            - jupyterlab
-        apps:
-            - name: jupyterlab
-              type: jupyterlab
-              class: webapp
-              start_command: jupyter lab --allow-root --port 8888 --ip 0.0.0.0 --no-browser --NotebookApp.base_url=\$PROXY_PREFIX --NotebookApp.default_url=/lab --NotebookApp.allow_origin='*'
-              health_check_command: '[ \$(echo url=\$(jupyter lab list | head -n 2 | tail -n 1 | cut -f1 -d'' '' | grep -v ''Currently'' | sed "s@/?@/lab?@g") | curl -o /dev/null -s -w ''%{http_code}'' --config -) == ''200'' ]'
-              stop_command: jupyter lab stop 8888
-              user_msg: ""
-              logfile_path: ""
-              timeout_seconds: 60
-              icon_url: ""
-              webapp_options:
-                autolaunch: true
-                port: "8888"
-                proxy:
-                    trim_prefix: false
-                url_command: jupyter lab list | head -n 2 | tail -n 1 | cut -f1 -d' ' | grep -v 'Currently'
+        apps: []
         programming_languages:
             - python3
         icon_url: https://workbench.download.nvidia.com/static/img/ai-workbench-icon-rectangle.jpg
@@ -84,7 +67,23 @@ environment:
             target: ""
     compose_file_path: ""
 execution:
-    apps: []
+    apps:
+        - name: Iphish Agent
+          type: custom
+          class: webapp
+          start_command: bash -lc '/project/scripts/hermes_workbench.sh start'
+          health_check_command: bash -lc '/project/scripts/hermes_workbench.sh health'
+          stop_command: bash -lc '/project/scripts/hermes_workbench.sh stop'
+          user_msg: Hermes Iphish Agent is available at {{URL}}.
+          logfile_path: /project/logs/iphish-agent.log
+          timeout_seconds: 180
+          icon_url: ""
+          webapp_options:
+            autolaunch: false
+            port: "9119"
+            proxy:
+                trim_prefix: true
+            url_command: bash -lc 'echo http://127.0.0.1:9119'
     resources:
         gpu:
             requested: 0
@@ -94,4 +93,8 @@ execution:
         - type: project
           target: /project/
           description: Project directory
+          options: rw
+        - type: host
+          target: /host-run/
+          description: Host runtime directory for Docker socket used to run the Hermes container
           options: rw

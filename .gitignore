@@ -55,3 +55,6 @@ cover/
 # Workbench Project Layout
 data/scratch/*
 !data/scratch/.gitkeep
+data/hermes/
+logs/
+.env
