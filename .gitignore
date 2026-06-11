@@ -56,5 +56,6 @@ cover/
 data/scratch/*
 !data/scratch/.gitkeep
 data/hermes/
+data/gophish/
 logs/
 .env
