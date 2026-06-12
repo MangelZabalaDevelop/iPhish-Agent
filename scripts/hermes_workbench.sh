@@ -20,6 +20,7 @@ API_KEY="${HERMES_API_KEY:-local-external-vllm-placeholder}"
 API_SERVER_KEY="${HERMES_API_SERVER_KEY:-local-hermes-agent}"
 TTYD_PORT="${HERMES_TUI_PORT:-9119}"
 GOPHISH_API_KEY="${GOPHISH_API_KEY:-local-gophish-api-key-change-me}"
+GOPHISH_ADMIN_PASSWORD_HASH="${GOPHISH_ADMIN_PASSWORD_HASH:-\$2a\$10\$I/Wbkx1K48wsS8TUg.BMV.iTrQEiAYcSkHXmrWfUk4OrMeKabsU26}"
 GOPHISH_ADMIN_URL="${GOPHISH_ADMIN_URL:-http://127.0.0.1:3333}"
 GOPHISH_API_URL="${GOPHISH_API_URL:-http://127.0.0.1:3333/api}"
 GOPHISH_PUBLIC_URL="${GOPHISH_PUBLIC_URL:-http://127.0.0.1:8080}"
@@ -155,19 +156,23 @@ wait_for_gophish() {
   return 1
 }
 
-configure_gophish_api_key() {
-  python3 - "$GOPHISH_STATE_DIR/gophish.db" "$GOPHISH_API_KEY" <<'PY'
+configure_gophish_admin() {
+  python3 - "$GOPHISH_STATE_DIR/gophish.db" "$GOPHISH_API_KEY" "$GOPHISH_ADMIN_PASSWORD_HASH" <<'PY'
 import sqlite3
 import sys
 from pathlib import Path
 
 db = Path(sys.argv[1])
 api_key = sys.argv[2]
+password_hash = sys.argv[3]
 if not db.exists():
     raise SystemExit(f"missing GoPhish database: {db}")
 con = sqlite3.connect(db)
 try:
-    con.execute("update users set api_key = ?, password_change_required = 0 where username = 'admin'", (api_key,))
+    con.execute(
+        "update users set api_key = ?, hash = ?, password_change_required = 0 where username = 'admin'",
+        (api_key, password_hash),
+    )
     con.commit()
 finally:
     con.close()
@@ -194,7 +199,7 @@ start_gophish() {
     "$GOPHISH_IMAGE" \
     ./gophish --config /opt/gophish/config.json >>"$LOG_FILE" 2>&1
   wait_for_gophish
-  configure_gophish_api_key
+  configure_gophish_admin
   curl -fsS --max-time 5 -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaigns/" >/dev/null
 }
 

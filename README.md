@@ -1,38 +1,49 @@
 # Iphish Agent
 
-Clean NVIDIA AI Workbench project for running Hermes Agent against a local
-OpenAI-compatible vLLM endpoint.
+Simple NVIDIA AI Workbench project for running:
 
-## Get Started
+- Iphish Agent, powered by Hermes.
+- GoPhish, for authorized security-awareness campaign testing.
+
+## First Setup
+
 1. Open this project in NVIDIA AI Workbench.
-2. Set the Workbench Environment Variables if your vLLM endpoint differs:
+2. Go to **Environment > Project Container > Environment Variables**.
+3. Confirm these two values:
 
 ```text
 HERMES_MODEL=Qwen3.6-35B-A3B-NVFP4
 HERMES_BASE_URL=http://192.168.0.8:9494
 ```
 
-3. Start the `Iphish Agent` Application.
-4. Click **Open**. Workbench opens a browser terminal running the Hermes TUI.
-5. Start the `GoPhish` Application when you want the admin UI button, then
-   click **Open**.
+Use the IP and port of your running vLLM server. If your vLLM is already using
+`192.168.0.8:9494`, you do not need to change anything.
 
-The Workbench Application starts two local containers on the Project Container
-network:
+## Start
+
+1. Start **Iphish Agent**.
+2. Click **Open Iphish Agent** to open the agent terminal.
+3. Start **GoPhish**.
+4. Click **Open GoPhish** to open the GoPhish admin panel.
+
+## GoPhish Login
+
+Default local credentials:
+
+```text
+Username: admin
+Password: Iphish123!
+```
+
+These credentials are for the local Workbench lab only.
+
+## What Runs
+
+Workbench starts these local containers:
 
 ```text
 xpectra-iphish-agent
 xpectra-iphish-agent-gophish
-```
-
-Hermes listens on:
-
-```text
-TUI web terminal: http://127.0.0.1:9119
-API:              http://127.0.0.1:8642/v1
-GoPhish admin:    http://127.0.0.1:3333
-GoPhish Workbench proxy: http://127.0.0.1:3334
-GoPhish public:   http://127.0.0.1:8080
 ```
 
 No NemoClaw, OpenShell, or legacy IPhish files are included in this project.
