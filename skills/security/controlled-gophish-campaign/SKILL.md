@@ -119,6 +119,12 @@ Minimal landing page:
 {"name":"Training Landing Page","html":"<html>...</html>","capture_credentials":false,"capture_passwords":false}
 ```
 
+For approved low-risk training fields, use normal form fields with `name`
+attributes, such as `name="full_name"` and `name="country"`. If those fields
+must be recorded in GoPhish, set `capture_credentials` to `true` and
+`capture_passwords` to `false`. Never include password, token, MFA, payment, or
+secret fields.
+
 Minimal template:
 
 ```json
@@ -129,6 +135,10 @@ Clickable links and buttons must use exactly `{{.URL}}`, including both pairs
 of braces. `{{.Tracker}}` is only for GoPhish's invisible tracking pixel. Never
 put `{{.Tracker}}`, `/track`, `{.URL}`, or a hardcoded `/track?rid=...` in a
 button or visible link.
+
+All GoPhish template variables must use double braces, for example
+`{{.FirstName}}`, `{{.URL}}`, and `{{.Tracker}}`. Single-brace variables such
+as `{.FirstName}` are invalid and can break HTML rendering or API updates.
 
 Minimal review SMTP profile:
 
