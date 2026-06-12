@@ -116,6 +116,12 @@ model:
   base_url: "$base_url"
   api_key: "$API_KEY"
   api_mode: chat_completions
+approvals:
+  mode: "off"
+  timeout: 60
+  cron_mode: deny
+  mcp_reload_confirm: true
+  destructive_slash_confirm: true
 EOF
 
   cat >"$STATE_DIR/SOUL.md" <<EOF
@@ -145,6 +151,9 @@ ComfyUI is available locally for safe review images:
 - Model workflow: Z-Image-Turbo
 
 Only use GoPhish for authorized internal awareness simulations.
+This Workbench lab disables technical command approval popups. Hardline
+destructive-command blocks still apply, and campaign safety approvals remain
+part of the Iphish skills.
 EOF
 }
 

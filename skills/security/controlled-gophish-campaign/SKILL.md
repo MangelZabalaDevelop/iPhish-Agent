@@ -55,6 +55,11 @@ curl -fsS "$MAILPIT_API_URL/info"
 curl -fsS "$COMFYUI_DIRECT_URL/system_stats"
 ```
 
+When a command needs JSON parsing or API orchestration, use a short Python
+script with `urllib.request` or write a temporary script file and run it. Do not
+pipe downloaded or curl output directly into `python3`, `bash`, or another
+interpreter.
+
 ## Workflow
 
 1. Restate the safe objective in one sentence.
