@@ -39,7 +39,7 @@ GoPhish, Mailpit, and ComfyUI are local to this Workbench project.
 ```bash
 GOPHISH_ADMIN_URL="${GOPHISH_ADMIN_URL:-http://127.0.0.1:3333}"
 GOPHISH_API_URL="${GOPHISH_API_URL:-http://127.0.0.1:3333/api}"
-GOPHISH_PUBLIC_URL="${GOPHISH_PUBLIC_URL:-http://127.0.0.1:8080}"
+GOPHISH_PUBLIC_URL="${GOPHISH_PUBLIC_URL:-http://localhost:10000/projects/iphish-agent/applications/GoPhish/landing}"
 GOPHISH_API_KEY="${GOPHISH_API_KEY:-local-gophish-api-key-change-me}"
 MAILPIT_WEB_URL="${MAILPIT_WEB_URL:-http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit}"
 MAILPIT_API_URL="${MAILPIT_API_URL:-http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit/api/v1}"
@@ -125,6 +125,11 @@ Minimal template:
 {"name":"Training Email Template","subject":"...","html":"<html>Use {{.URL}} for the training link.</html>"}
 ```
 
+Clickable links and buttons must use exactly `{{.URL}}`, including both pairs
+of braces. `{{.Tracker}}` is only for GoPhish's invisible tracking pixel. Never
+put `{{.Tracker}}`, `/track`, `{.URL}`, or a hardcoded `/track?rid=...` in a
+button or visible link.
+
 Minimal review SMTP profile:
 
 ```json
@@ -134,13 +139,13 @@ Minimal review SMTP profile:
 Minimal campaign:
 
 ```json
-{"name":"Training Campaign","template":{"name":"Training Email Template"},"page":{"name":"Training Landing Page"},"smtp":{"name":"Mailpit Review SMTP"},"url":"http://127.0.0.1:8080","groups":[{"name":"Training Review Group"}]}
+{"name":"Training Campaign","template":{"name":"Training Email Template"},"page":{"name":"Training Landing Page"},"smtp":{"name":"Mailpit Review SMTP"},"url":"http://localhost:10000/projects/iphish-agent/applications/GoPhish/landing","groups":[{"name":"Training Review Group"}]}
 ```
 
 ## Quality Bar
 
 - The email and landing page should look like a controlled internal training artifact, not credential theft.
-- Use `{{.URL}}` for the GoPhish tracking link in the email.
+- Use exactly `{{.URL}}` for every clickable GoPhish landing link in the email.
 - The landing page must include a visible training-safe purpose and only approved fields.
 - Keep copy concise and believable without urgency, threats, account lockout claims, or coercion.
 - If using generated visuals, use the `comfyui-z-image` skill and its visual review gate.

@@ -27,7 +27,7 @@ GOPHISH_API_KEY="${GOPHISH_API_KEY:-local-gophish-api-key-change-me}"
 GOPHISH_ADMIN_PASSWORD_HASH="${GOPHISH_ADMIN_PASSWORD_HASH:-\$2a\$10\$I/Wbkx1K48wsS8TUg.BMV.iTrQEiAYcSkHXmrWfUk4OrMeKabsU26}"
 GOPHISH_ADMIN_URL="${GOPHISH_ADMIN_URL:-http://127.0.0.1:3333}"
 GOPHISH_API_URL="${GOPHISH_API_URL:-http://127.0.0.1:3333/api}"
-GOPHISH_PUBLIC_URL="${GOPHISH_PUBLIC_URL:-http://127.0.0.1:8080}"
+GOPHISH_PUBLIC_URL="${GOPHISH_PUBLIC_URL:-http://localhost:10000/projects/iphish-agent/applications/GoPhish/landing}"
 GOPHISH_PROXY_PORT="${GOPHISH_PROXY_PORT:-3334}"
 MAILPIT_WEBROOT="${MAILPIT_WEBROOT:-/projects/iphish-agent/applications/Mailpit}"
 MAILPIT_WEB_URL="${MAILPIT_WEB_URL:-http://127.0.0.1:8025${MAILPIT_WEBROOT}}"
@@ -770,6 +770,11 @@ case "$ACTION" in
     curl -fsS --max-time 5 -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaigns/" >/dev/null
     curl -fsS --max-time 5 "http://127.0.0.1:${GOPHISH_PROXY_PORT}/projects/iphish-agent/applications/GoPhish/login" >/dev/null
     ;;
+  gophish-landing-health)
+    docker inspect -f '{{.State.Status}}' "$GOPHISH_CONTAINER_NAME" 2>/dev/null | grep -qx running
+    code="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080/" || true)"
+    [ "$code" = "404" ] || [ "$code" = "200" ]
+    ;;
   mailpit-health)
     docker inspect -f '{{.State.Status}}' "$MAILPIT_CONTAINER_NAME" 2>/dev/null | grep -qx running
     curl -fsS --max-time 5 "$MAILPIT_WEB_URL/api/v1/info" >/dev/null
@@ -797,7 +802,7 @@ case "$ACTION" in
     tail -n "${2:-120}" "$TTYD_LOG_FILE"
     ;;
   *)
-    printf 'Usage: %s {start|start-gophish|start-mailpit|start-comfyui|stop|stop-gophish|stop-mailpit|stop-comfyui|restart|health|gophish-health|mailpit-health|comfyui-health|status|logs|gophish-logs|mailpit-logs|comfyui-logs|tui-logs}\n' "$0" >&2
+    printf 'Usage: %s {start|start-gophish|start-mailpit|start-comfyui|stop|stop-gophish|stop-mailpit|stop-comfyui|restart|health|gophish-health|gophish-landing-health|mailpit-health|comfyui-health|status|logs|gophish-logs|mailpit-logs|comfyui-logs|tui-logs}\n' "$0" >&2
     exit 2
     ;;
 esac

@@ -8,7 +8,9 @@ from urllib.parse import urlsplit
 
 UPSTREAM_HOST = os.environ.get("GOPHISH_UPSTREAM_HOST", "127.0.0.1")
 UPSTREAM_PORT = int(os.environ.get("GOPHISH_UPSTREAM_PORT", "3333"))
+PHISH_UPSTREAM_PORT = int(os.environ.get("GOPHISH_PHISH_UPSTREAM_PORT", "8080"))
 PROXY_PREFIX = os.environ.get("PROXY_PREFIX", "/projects/iphish-agent/applications/GoPhish").rstrip("/")
+LANDING_PREFIX = PROXY_PREFIX + "/landing"
 LISTEN_HOST = os.environ.get("GOPHISH_PROXY_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.environ.get("GOPHISH_PROXY_PORT", "3334"))
 
@@ -19,31 +21,41 @@ class GoPhishProxy(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
 
-    def upstream_path(self):
+    def route(self):
         path = urlsplit(self.path).path
         query = urlsplit(self.path).query
-        if path == PROXY_PREFIX:
+        prefix = PROXY_PREFIX
+        port = UPSTREAM_PORT
+        if path == LANDING_PREFIX:
+            path = "/"
+            prefix = LANDING_PREFIX
+            port = PHISH_UPSTREAM_PORT
+        elif path.startswith(LANDING_PREFIX + "/"):
+            path = path[len(LANDING_PREFIX):]
+            prefix = LANDING_PREFIX
+            port = PHISH_UPSTREAM_PORT
+        elif path == PROXY_PREFIX:
             path = "/"
         elif path.startswith(PROXY_PREFIX + "/"):
             path = path[len(PROXY_PREFIX):]
         if not path:
             path = "/"
-        return path + (("?" + query) if query else "")
+        return port, prefix, path + (("?" + query) if query else "")
 
-    def rewrite_location(self, value):
+    def rewrite_location(self, value, prefix):
         if value.startswith("/"):
-            return PROXY_PREFIX + value
+            return prefix + value
         return value
 
-    def rewrite_body(self, body, content_type):
+    def rewrite_body(self, body, content_type, prefix):
         if not content_type.startswith("text/html"):
             return body
         text = body.decode("utf-8", errors="replace")
         replacements = {
-            'href="/': f'href="{PROXY_PREFIX}/',
-            'src="/': f'src="{PROXY_PREFIX}/',
-            'action="/': f'action="{PROXY_PREFIX}/',
-            'url(/': f'url({PROXY_PREFIX}/',
+            'href="/': f'href="{prefix}/',
+            'src="/': f'src="{prefix}/',
+            'action="/': f'action="{prefix}/',
+            'url(/': f'url({prefix}/',
         }
         for old, new in replacements.items():
             text = text.replace(old, new)
@@ -55,16 +67,17 @@ class GoPhishProxy(BaseHTTPRequestHandler):
             body = self.rfile.read(int(self.headers["Content-Length"]))
 
         headers = {k: v for k, v in self.headers.items() if k.lower() not in {"host", "accept-encoding", "connection"}}
-        headers["Host"] = f"{UPSTREAM_HOST}:{UPSTREAM_PORT}"
+        port, prefix, path = self.route()
+        headers["Host"] = f"{UPSTREAM_HOST}:{port}"
         headers["X-Forwarded-Prefix"] = PROXY_PREFIX
 
-        conn = HTTPConnection(UPSTREAM_HOST, UPSTREAM_PORT, timeout=30)
+        conn = HTTPConnection(UPSTREAM_HOST, port, timeout=30)
         try:
-            conn.request(self.command, self.upstream_path(), body=body, headers=headers)
+            conn.request(self.command, path, body=body, headers=headers)
             resp = conn.getresponse()
             data = resp.read()
             content_type = resp.getheader("Content-Type", "")
-            data = self.rewrite_body(data, content_type)
+            data = self.rewrite_body(data, content_type, prefix)
 
             self.send_response(resp.status, resp.reason)
             for key, value in resp.getheaders():
@@ -72,7 +85,7 @@ class GoPhishProxy(BaseHTTPRequestHandler):
                 if lower in {"content-length", "connection", "transfer-encoding"}:
                     continue
                 if lower == "location":
-                    value = self.rewrite_location(value)
+                    value = self.rewrite_location(value, prefix)
                 self.send_header(key, value)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Connection", "close")
@@ -103,5 +116,9 @@ class GoPhishProxy(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     server = ThreadingHTTPServer((LISTEN_HOST, LISTEN_PORT), GoPhishProxy)
-    print(f"GoPhish Workbench proxy listening on {LISTEN_HOST}:{LISTEN_PORT} -> {UPSTREAM_HOST}:{UPSTREAM_PORT}", flush=True)
+    print(
+        f"GoPhish Workbench proxy listening on {LISTEN_HOST}:{LISTEN_PORT} -> "
+        f"admin {UPSTREAM_HOST}:{UPSTREAM_PORT}, landing {UPSTREAM_HOST}:{PHISH_UPSTREAM_PORT}",
+        flush=True,
+    )
     server.serve_forever()

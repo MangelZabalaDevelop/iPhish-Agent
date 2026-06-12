@@ -47,6 +47,16 @@ Password: Iphish123!
 
 These credentials are for the local Workbench lab only.
 
+Campaign landing links are opened through the Workbench GoPhish proxy:
+
+```text
+http://localhost:10000/projects/iphish-agent/applications/GoPhish/landing
+```
+
+The agent uses this URL when it creates campaigns, so links in Mailpit should
+open the landing page directly. The GoPhish admin button still opens the admin
+panel.
+
 ## What Runs
 
 Workbench starts these local containers:
