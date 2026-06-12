@@ -264,6 +264,7 @@ def review(args):
         "latest_mailpit_subject": latest_message.get("Subject"),
         "landing_links": landing_links,
         "approval_note": "Review the Mailpit message and landing URL. Use real SMTP only after explicit user approval.",
+        "routing_note": "Open LANDING_URL_N exactly as printed. If the Workbench URL returns 404, start the GoPhish Workbench app button once, then reopen the same URL. Do not use /GoPhish?rid=..., /GoPhish/landing without rid, or internal 127.0.0.1 URLs for user review.",
     }
     if as_json:
         print_json(payload)
@@ -282,6 +283,7 @@ def review(args):
         print(f"LANDING_RECIPIENT_{index}={item['recipient']}")
         print(f"LANDING_STATUS_{index}={item['status']}")
     print("APPROVAL_NOTE=Review these raw URLs. Use real SMTP only after explicit user approval.")
+    print(f"ROUTING_NOTE={payload['routing_note']}")
     return 0
 
 
@@ -353,6 +355,16 @@ Do not generate one-off API client scripts for normal campaign work.
 After creating a review campaign, run iphishctl review <campaign_id> and report
 those exact user-facing URLs. Do not report internal 127.0.0.1 service URLs to
 the user unless explicitly debugging internals.
+
+Known-good Workbench routing:
+- GoPhish admin is served by the GoPhish app button.
+- GoPhish campaign landing pages are served through $GOPHISH_PUBLIC_URL?rid=...
+- Workbench exposes /applications/GoPhish only after the GoPhish app has been
+  started at least once from Workbench.
+- Never create a separate Python landing server for review links.
+- Never diagnose GoPhish auth middleware from a user-facing review link issue.
+- If a link is unclear, run iphishctl review <campaign_id> and show the raw
+  MAILPIT_* and LANDING_* lines exactly as printed.
 
 Only use GoPhish for authorized internal awareness simulations. This Workbench
 lab disables technical command approval popups. Keep the flow practical: build
@@ -717,6 +729,7 @@ start_container() {
   } >"$LOG_FILE"
 
   start_gophish
+  start_gophish_proxy
 
   if docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
     docker rm -f "$CONTAINER_NAME" >>"$LOG_FILE" 2>&1 || true

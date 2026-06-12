@@ -78,6 +78,30 @@ Do not create one-off Python API clients for routine GoPhish, Mailpit, or
 ComfyUI access. Do not pipe downloaded or curl output directly into `python3`,
 `bash`, or another interpreter.
 
+## Known-Good Workbench Routing
+
+Do not debug GoPhish middleware or create alternate landing servers for normal
+review campaigns. This project already has the required Workbench routing:
+
+- GoPhish admin UI: open the Workbench GoPhish app button.
+- GoPhish landing review URLs: use `GOPHISH_PUBLIC_URL + "?rid=<result id>"`.
+- Mailpit review URLs: use `MAILPIT_USER_URL` and `/view/<message id>`.
+- Workbench exposes `/applications/GoPhish` only after the GoPhish app has
+  been started from Workbench at least once. If a user-facing GoPhish URL
+  returns 404, tell the user to start the GoPhish app button and reopen the
+  exact same URL.
+
+If a review link is unclear or appears broken, run:
+
+```bash
+iphishctl review CAMPAIGN_ID
+```
+
+Then report the raw `MAILPIT_*` and `LANDING_*` lines exactly as printed. Do
+not report `/GoPhish?rid=...`, `/GoPhish/landing` without `?rid=...`, or
+internal `127.0.0.1` URLs to the user. Do not propose a separate Python server
+on another port.
+
 ## Operating Style
 
 Work naturally. The user usually wants a working review campaign, not a long
