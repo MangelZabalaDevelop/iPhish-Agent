@@ -232,10 +232,34 @@ try:
     data = json.loads(settings.read_text()) if settings.exists() else {}
 except json.JSONDecodeError:
     data = {}
-data["Comfy.Workflow.Persist"] = True
+data["Comfy.Workflow.Persist"] = False
 data["Comfy.EnableWorkflowViewRestore"] = True
 data["Comfy.TutorialCompleted"] = True
 settings.write_text(json.dumps(data, indent=2, sort_keys=True))
+
+assets = Path("/usr/local/lib/python3.12/dist-packages/comfyui_frontend_package/static/assets")
+load_z_image = (
+    "try{let e=await fetch(z.apiURL(`/userdata/${encodeURIComponent(`workflows/image_z_image_turbo.json`)}`));"
+    "if(e.ok){let t=await e.json();await Q.loadGraphData(t,!0,!0,`Z-Image-Turbo`);return}}"
+    "catch(e){console.warn(`Iphish could not load Z-Image-Turbo workflow`,e)}"
+)
+replacements = {
+    "loadDefaultWorkflow=async()=>{await Q.loadGraphData(Qc)}":
+        "loadDefaultWorkflow=async()=>{" + load_z_image + "await Q.loadGraphData(Qc)}",
+    "loadBlankWorkflow=async()=>{await Q.loadGraphData(el)}":
+        "loadBlankWorkflow=async()=>{" + load_z_image + "await Q.loadGraphData(el)}",
+    "async function tryLoadGraph(e,t,n){if(!e)return!1;try{let n=JSON.parse(e);return await $.loadGraphData(n,!0,!0,t),!0}catch(e){return console.error(`Failed to load persisted workflow`,e),n?.(),!1}}":
+        "async function tryLoadGraph(e,t,n){if(!e)return!1;try{let r=JSON.parse(e);if(!Array.isArray(r?.nodes)||r.nodes.length===0){n?.();return!1}return await $.loadGraphData(r,!0,!0,t),!0}catch(e){return console.error(`Failed to load persisted workflow`,e),n?.(),!1}}",
+    "loadDefaultWorkflow=async()=>{n.get(`Comfy.TutorialCompleted`)?await $.loadGraphData():(await n.set(`Comfy.TutorialCompleted`,!0),await Xi().loadBlankWorkflow(),hasSharedWorkflowIntent()||await Ji().execute(`Comfy.BrowseTemplates`))}":
+        "loadDefaultWorkflow=async()=>{try{let e=await fetch(Xn.apiURL(`/userdata/${encodeURIComponent(`workflows/image_z_image_turbo.json`)}`));if(e.ok){let t=await e.json();await $.loadGraphData(t,!0,!0,`Z-Image-Turbo`);return}}catch(e){console.warn(`Iphish could not load Z-Image-Turbo workflow on startup`,e)}n.get(`Comfy.TutorialCompleted`)?await $.loadGraphData():(await n.set(`Comfy.TutorialCompleted`,!0),await Xi().loadBlankWorkflow(),hasSharedWorkflowIntent()||await Ji().execute(`Comfy.BrowseTemplates`))}",
+}
+for bundle in assets.glob("*.js"):
+    text = bundle.read_text(errors="ignore")
+    updated = text
+    for needle, replacement in replacements.items():
+        updated = updated.replace(needle, replacement)
+    if updated != text:
+        bundle.write_text(updated)
 PY
 }
 
