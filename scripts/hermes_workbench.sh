@@ -65,6 +65,12 @@ prepare_state() {
   mkdir -p "$STATE_DIR" "$(dirname "$LOG_FILE")"
   repair_state_permissions "$host_project"
   chmod 700 "$STATE_DIR" 2>/dev/null || true
+  mkdir -p "$STATE_DIR/skills/security"
+  if [ -d "$PROJECT_DIR/skills/security/controlled-gophish-campaign" ]; then
+    rm -rf "$STATE_DIR/skills/security/controlled-gophish-campaign"
+    cp -R "$PROJECT_DIR/skills/security/controlled-gophish-campaign" "$STATE_DIR/skills/security/"
+    chmod -R u+rwX,go+rX "$STATE_DIR/skills/security/controlled-gophish-campaign" 2>/dev/null || true
+  fi
 
   cat >"$STATE_DIR/.env" <<EOF
 OPENAI_BASE_URL=$base_url

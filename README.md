@@ -46,4 +46,8 @@ xpectra-iphish-agent
 xpectra-iphish-agent-gophish
 ```
 
+The agent includes a small local Hermes skill named
+`controlled-gophish-campaign`. It teaches Hermes how to create safe,
+authorized GoPhish awareness campaigns and requires review before final SMTP.
+
 No NemoClaw, OpenShell, or legacy IPhish files are included in this project.
