@@ -6,6 +6,8 @@ PROJECT_DIR="${PROJECT_DIR:-/project}"
 LOG_FILE="${LOG_FILE:-$PROJECT_DIR/logs/iphish-agent.log}"
 TTYD_LOG_FILE="${TTYD_LOG_FILE:-$PROJECT_DIR/logs/iphish-agent-tui.log}"
 TTYD_PID_FILE="${TTYD_PID_FILE:-/tmp/iphish-agent-ttyd.pid}"
+GOPHISH_PROXY_LOG_FILE="${GOPHISH_PROXY_LOG_FILE:-$PROJECT_DIR/logs/gophish-workbench-proxy.log}"
+GOPHISH_PROXY_PID_FILE="${GOPHISH_PROXY_PID_FILE:-/tmp/iphish-agent-gophish-proxy.pid}"
 STATE_DIR="${STATE_DIR:-$PROJECT_DIR/data/hermes}"
 GOPHISH_STATE_DIR="${GOPHISH_STATE_DIR:-$PROJECT_DIR/data/gophish}"
 CONTAINER_NAME="${HERMES_CONTAINER_NAME:-xpectra-iphish-agent}"
@@ -21,6 +23,7 @@ GOPHISH_API_KEY="${GOPHISH_API_KEY:-local-gophish-api-key-change-me}"
 GOPHISH_ADMIN_URL="${GOPHISH_ADMIN_URL:-http://127.0.0.1:3333}"
 GOPHISH_API_URL="${GOPHISH_API_URL:-http://127.0.0.1:3333/api}"
 GOPHISH_PUBLIC_URL="${GOPHISH_PUBLIC_URL:-http://127.0.0.1:8080}"
+GOPHISH_PROXY_PORT="${GOPHISH_PROXY_PORT:-3334}"
 DOCKER_HOST="${DOCKER_HOST:-unix:///host-run/docker.sock}"
 export DOCKER_HOST
 
@@ -195,6 +198,36 @@ start_gophish() {
   curl -fsS --max-time 5 -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaigns/" >/dev/null
 }
 
+stop_gophish_proxy() {
+  if [ -f "$GOPHISH_PROXY_PID_FILE" ]; then
+    local pid
+    pid="$(cat "$GOPHISH_PROXY_PID_FILE" 2>/dev/null || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+    fi
+    rm -f "$GOPHISH_PROXY_PID_FILE"
+  fi
+}
+
+start_gophish_proxy() {
+  mkdir -p "$(dirname "$GOPHISH_PROXY_LOG_FILE")"
+  stop_gophish_proxy
+  {
+    printf '=== starting GoPhish Workbench proxy at %s ===\n' "$(date -Is)"
+    printf 'port=%s prefix=%s\n' "$GOPHISH_PROXY_PORT" "${PROXY_PREFIX:-/projects/iphish-agent/applications/GoPhish}"
+  } >"$GOPHISH_PROXY_LOG_FILE"
+  nohup python3 "$PROJECT_DIR/scripts/gophish_workbench_proxy.py" >>"$GOPHISH_PROXY_LOG_FILE" 2>&1 </dev/null &
+  echo "$!" >"$GOPHISH_PROXY_PID_FILE"
+  local i
+  for i in $(seq 1 30); do
+    if curl -fsS --max-time 2 "http://127.0.0.1:${GOPHISH_PROXY_PORT}/projects/iphish-agent/applications/GoPhish/login" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 start_container() {
   local host_project
   host_project="$(project_host_dir)"
@@ -285,6 +318,7 @@ case "$ACTION" in
     ;;
   start-gophish)
     start_gophish
+    start_gophish_proxy
     ;;
   stop)
     stop_tui
@@ -292,6 +326,7 @@ case "$ACTION" in
     docker rm -f "$GOPHISH_CONTAINER_NAME" >/dev/null 2>&1 || true
     ;;
   stop-gophish)
+    stop_gophish_proxy
     docker rm -f "$GOPHISH_CONTAINER_NAME" >/dev/null 2>&1 || true
     ;;
   restart)
@@ -305,6 +340,7 @@ case "$ACTION" in
     docker inspect -f '{{.State.Status}}' "$GOPHISH_CONTAINER_NAME" 2>/dev/null | grep -qx running
     curl -fsS --max-time 5 "$GOPHISH_ADMIN_URL/login" >/dev/null
     curl -fsS --max-time 5 -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaigns/" >/dev/null
+    curl -fsS --max-time 5 "http://127.0.0.1:${GOPHISH_PROXY_PORT}/projects/iphish-agent/applications/GoPhish/login" >/dev/null
     ;;
   status)
     docker ps -a --filter "name=$CONTAINER_NAME" --filter "name=$GOPHISH_CONTAINER_NAME" --format 'table {{.Names}}\t{{.Status}}'

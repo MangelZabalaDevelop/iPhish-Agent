@@ -96,10 +96,10 @@ execution:
           icon_url: ""
           webapp_options:
             autolaunch: false
-            port: "3333"
+            port: "3334"
             proxy:
-                trim_prefix: true
-            url_command: bash -lc 'echo http://127.0.0.1:3333'
+                trim_prefix: false
+            url_command: bash -lc 'echo http://127.0.0.1:3334/projects/iphish-agent/applications/GoPhish/login'
     resources:
         gpu:
             requested: 0

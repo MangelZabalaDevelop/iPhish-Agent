@@ -34,6 +34,7 @@ Hermes listens on:
 TUI web terminal: http://127.0.0.1:9119
 API:              http://127.0.0.1:8642/v1
 GoPhish admin:    http://127.0.0.1:3333
+GoPhish Workbench proxy: http://127.0.0.1:3334
 GoPhish public:   http://127.0.0.1:8080
 ```
 
