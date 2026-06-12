@@ -47,18 +47,30 @@ COMFYUI_API_URL="${COMFYUI_API_URL:-http://127.0.0.1:8188}"
 COMFYUI_DIRECT_URL="${COMFYUI_DIRECT_URL:-http://127.0.0.1:8188}"
 ```
 
-Call the API with:
+Use the bundled `iphishctl` helper for service access. Prefer this helper over
+ad hoc Python files or raw curl commands.
 
 ```bash
-curl -fsS -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaigns/"
-curl -fsS "$MAILPIT_API_URL/info"
-curl -fsS "$COMFYUI_DIRECT_URL/system_stats"
+iphishctl gophish GET /campaigns/
+iphishctl mailpit info
+iphishctl mailpit messages
+iphishctl comfy status
 ```
 
-When a command needs JSON parsing or API orchestration, use a short Python
-script with `urllib.request` or write a temporary script file and run it. Do not
-pipe downloaded or curl output directly into `python3`, `bash`, or another
-interpreter.
+For create/update operations, write the JSON body to a temporary `.json` file
+and pass it to `iphishctl`, for example:
+
+```bash
+iphishctl gophish POST /groups/ /tmp/group.json
+iphishctl gophish POST /pages/ /tmp/page.json
+iphishctl gophish POST /templates/ /tmp/template.json
+iphishctl gophish POST /smtp/ /tmp/smtp.json
+iphishctl gophish POST /campaigns/ /tmp/campaign.json
+```
+
+Do not create one-off Python API clients for routine GoPhish, Mailpit, or
+ComfyUI access. Do not pipe downloaded or curl output directly into `python3`,
+`bash`, or another interpreter.
 
 ## Workflow
 

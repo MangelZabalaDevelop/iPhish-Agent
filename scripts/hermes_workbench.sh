@@ -107,6 +107,126 @@ COMFYUI_API_URL=$COMFYUI_API_URL
 COMFYUI_DIRECT_URL=$COMFYUI_DIRECT_URL
 EOF
   chmod 600 "$STATE_DIR/.env" 2>/dev/null || true
+  mkdir -p "$STATE_DIR/.local/bin"
+  cat >"$STATE_DIR/.local/bin/iphishctl" <<'PY'
+#!/usr/bin/env python3
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+
+def usage():
+    print(
+        "Usage:\n"
+        "  iphishctl gophish METHOD /path [json-file|-]\n"
+        "  iphishctl mailpit info|messages|message ID\n"
+        "  iphishctl comfy status|queue|prompt json-file|-\n",
+        file=sys.stderr,
+    )
+    return 2
+
+
+def read_payload(arg):
+    if not arg:
+        return None
+    raw = sys.stdin.read() if arg == "-" else open(arg, "r", encoding="utf-8").read()
+    return json.loads(raw)
+
+
+def request(method, url, payload=None, headers=None):
+    data = None if payload is None else json.dumps(payload).encode()
+    req = urllib.request.Request(url, data=data, method=method.upper())
+    req.add_header("Accept", "application/json")
+    if payload is not None:
+        req.add_header("Content-Type", "application/json")
+    for key, value in (headers or {}).items():
+        req.add_header(key, value)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = resp.read()
+            if not body:
+                return None
+            ctype = resp.headers.get("Content-Type", "")
+            if "json" in ctype:
+                return json.loads(body.decode())
+            return body.decode()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode(errors="replace")
+        print(json.dumps({"error": exc.code, "body": body}, indent=2), file=sys.stderr)
+        sys.exit(1)
+
+
+def print_json(value):
+    try:
+        print(json.dumps(value, indent=2, ensure_ascii=False))
+    except BrokenPipeError:
+        sys.exit(0)
+
+
+def gophish(args):
+    if len(args) < 2:
+        return usage()
+    method, path = args[0].upper(), args[1]
+    payload = read_payload(args[2]) if len(args) > 2 else None
+    base = os.environ.get("GOPHISH_API_URL", "http://127.0.0.1:3333/api").rstrip("/")
+    key = os.environ.get("GOPHISH_API_KEY", "local-gophish-api-key-change-me")
+    if not path.startswith("/"):
+        path = "/" + path
+    print_json(request(method, base + path, payload, {"Authorization": f"Bearer {key}"}))
+    return 0
+
+
+def mailpit(args):
+    if not args:
+        return usage()
+    base = os.environ.get("MAILPIT_API_URL", "http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit/api/v1").rstrip("/")
+    action = args[0]
+    if action == "info":
+        print_json(request("GET", base + "/info"))
+    elif action == "messages":
+        print_json(request("GET", base + "/messages"))
+    elif action == "message" and len(args) == 2:
+        print_json(request("GET", base + "/message/" + args[1]))
+    else:
+        return usage()
+    return 0
+
+
+def comfy(args):
+    if not args:
+        return usage()
+    base = os.environ.get("COMFYUI_DIRECT_URL", "http://127.0.0.1:8188").rstrip("/")
+    action = args[0]
+    if action == "status":
+        print_json(request("GET", base + "/system_stats"))
+    elif action == "queue":
+        print_json(request("GET", base + "/queue"))
+    elif action == "prompt" and len(args) == 2:
+        print_json(request("POST", base + "/prompt", read_payload(args[1])))
+    else:
+        return usage()
+    return 0
+
+
+def main():
+    if len(sys.argv) < 2:
+        return usage()
+    service, args = sys.argv[1], sys.argv[2:]
+    if service == "gophish":
+        return gophish(args)
+    if service == "mailpit":
+        return mailpit(args)
+    if service == "comfy":
+        return comfy(args)
+    return usage()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+PY
+  chmod 700 "$STATE_DIR/.local/bin/iphishctl"
 
   cat >"$STATE_DIR/config.yaml" <<EOF
 model:
@@ -530,6 +650,7 @@ start_container() {
     -e HERMES_DASHBOARD_HOST=127.0.0.1 \
     -e HERMES_DASHBOARD_PORT=9120 \
     -e HERMES_DASHBOARD_INSECURE=1 \
+    -e PATH=/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     -e API_SERVER_ENABLED=true \
     -e API_SERVER_HOST=0.0.0.0 \
     -e API_SERVER_KEY="$API_SERVER_KEY" \
@@ -551,6 +672,7 @@ start_container() {
     -e COMFYUI_API_URL="$COMFYUI_API_URL" \
     -e COMFYUI_DIRECT_URL="$COMFYUI_DIRECT_URL" \
     -v "$host_project/data/hermes:/opt/data" \
+    -v "$host_project/data/hermes/.local/bin/iphishctl:/usr/local/bin/iphishctl:ro" \
     "$IMAGE" gateway run >>"$LOG_FILE" 2>&1
 
   nohup docker logs --timestamps --follow "$CONTAINER_NAME" >>"$LOG_FILE" 2>&1 </dev/null &
