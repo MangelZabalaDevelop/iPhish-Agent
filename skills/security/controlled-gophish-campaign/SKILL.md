@@ -30,19 +30,25 @@ blue-team awareness exercise.
 
 ## Local Services
 
-GoPhish is local to this Workbench project.
+GoPhish and Mailpit are local to this Workbench project.
 
 ```bash
 GOPHISH_ADMIN_URL="${GOPHISH_ADMIN_URL:-http://127.0.0.1:3333}"
 GOPHISH_API_URL="${GOPHISH_API_URL:-http://127.0.0.1:3333/api}"
 GOPHISH_PUBLIC_URL="${GOPHISH_PUBLIC_URL:-http://127.0.0.1:8080}"
 GOPHISH_API_KEY="${GOPHISH_API_KEY:-local-gophish-api-key-change-me}"
+MAILPIT_WEB_URL="${MAILPIT_WEB_URL:-http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit}"
+MAILPIT_API_URL="${MAILPIT_API_URL:-http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit/api/v1}"
+MAILPIT_SMTP_HOST="${MAILPIT_SMTP_HOST:-127.0.0.1}"
+MAILPIT_SMTP_PORT="${MAILPIT_SMTP_PORT:-1025}"
+GOPHISH_REVIEW_SMTP_NAME="${GOPHISH_REVIEW_SMTP_NAME:-Mailpit Review SMTP}"
 ```
 
 Call the API with:
 
 ```bash
 curl -fsS -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaigns/"
+curl -fsS "$MAILPIT_API_URL/info"
 ```
 
 ## Workflow
@@ -63,7 +69,7 @@ curl -fsS -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaign
    - email template
    - sending profile
    - campaign
-7. Prefer a Mailpit/local SMTP review profile if available. If no SMTP review service exists, create the assets and provide the GoPhish preview/review path instead of sending.
+7. Use the `Mailpit Review SMTP` GoPhish sending profile for review sends. It delivers to Mailpit at `127.0.0.1:1025`; the user can inspect messages in the Workbench `Mailpit` app.
 8. Report the created object names/IDs, recipient(s), review status, and the exact next approval step.
 
 ## GoPhish API Shape
@@ -96,10 +102,16 @@ Minimal template:
 {"name":"Training Email Template","subject":"...","html":"<html>Use {{.URL}} for the training link.</html>"}
 ```
 
+Minimal review SMTP profile:
+
+```json
+{"name":"Mailpit Review SMTP","interface_type":"SMTP","host":"127.0.0.1:1025","from_address":"Iphish Training <training@example.local>","ignore_cert_errors":true,"headers":[]}
+```
+
 Minimal campaign:
 
 ```json
-{"name":"Training Campaign","template":{"name":"Training Email Template"},"page":{"name":"Training Landing Page"},"smtp":{"name":"Local Review SMTP"},"url":"http://127.0.0.1:8080","groups":[{"name":"Training Review Group"}]}
+{"name":"Training Campaign","template":{"name":"Training Email Template"},"page":{"name":"Training Landing Page"},"smtp":{"name":"Mailpit Review SMTP"},"url":"http://127.0.0.1:8080","groups":[{"name":"Training Review Group"}]}
 ```
 
 ## Quality Bar
@@ -109,6 +121,7 @@ Minimal campaign:
 - The landing page must include a visible training-safe purpose and only approved fields.
 - Keep copy concise and believable without urgency, threats, account lockout claims, or coercion.
 - If using generated visuals, prompts must say: "No text, no letters, no words in the image."
+- After launching the review campaign, check Mailpit with `GET $MAILPIT_API_URL/messages` and report whether a message arrived.
 
 ## Final Response Format
 

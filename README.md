@@ -4,6 +4,7 @@ Simple NVIDIA AI Workbench project for running:
 
 - Iphish Agent, powered by Hermes.
 - GoPhish, for authorized security-awareness campaign testing.
+- Mailpit, for local email review before any final send.
 
 ## First Setup
 
@@ -25,6 +26,8 @@ Use the IP and port of your running vLLM server. If your vLLM is already using
 2. Click **Open Iphish Agent** to open the agent terminal.
 3. Start **GoPhish**.
 4. Click **Open GoPhish** to open the GoPhish admin panel.
+5. Start **Mailpit**.
+6. Click **Open Mailpit** to review test emails.
 
 ## GoPhish Login
 
@@ -44,6 +47,7 @@ Workbench starts these local containers:
 ```text
 xpectra-iphish-agent
 xpectra-iphish-agent-gophish
+xpectra-iphish-agent-mailpit
 ```
 
 The agent includes a small local Hermes skill named

@@ -14,6 +14,8 @@ CONTAINER_NAME="${HERMES_CONTAINER_NAME:-xpectra-iphish-agent}"
 IMAGE="${HERMES_IMAGE:-nousresearch/hermes-agent:latest}"
 GOPHISH_CONTAINER_NAME="${GOPHISH_CONTAINER_NAME:-xpectra-iphish-agent-gophish}"
 GOPHISH_IMAGE="${GOPHISH_IMAGE:-xpectra/gophish-arm64:v0.12.1}"
+MAILPIT_CONTAINER_NAME="${MAILPIT_CONTAINER_NAME:-xpectra-iphish-agent-mailpit}"
+MAILPIT_IMAGE="${MAILPIT_IMAGE:-axllent/mailpit:latest}"
 MODEL="${HERMES_MODEL:-Qwen3.6-35B-A3B-NVFP4}"
 BASE_URL="${HERMES_BASE_URL:-http://192.168.0.8:9494}"
 API_KEY="${HERMES_API_KEY:-local-external-vllm-placeholder}"
@@ -25,6 +27,12 @@ GOPHISH_ADMIN_URL="${GOPHISH_ADMIN_URL:-http://127.0.0.1:3333}"
 GOPHISH_API_URL="${GOPHISH_API_URL:-http://127.0.0.1:3333/api}"
 GOPHISH_PUBLIC_URL="${GOPHISH_PUBLIC_URL:-http://127.0.0.1:8080}"
 GOPHISH_PROXY_PORT="${GOPHISH_PROXY_PORT:-3334}"
+MAILPIT_WEBROOT="${MAILPIT_WEBROOT:-/projects/iphish-agent/applications/Mailpit}"
+MAILPIT_WEB_URL="${MAILPIT_WEB_URL:-http://127.0.0.1:8025${MAILPIT_WEBROOT}}"
+MAILPIT_API_URL="${MAILPIT_API_URL:-${MAILPIT_WEB_URL}/api/v1}"
+MAILPIT_SMTP_HOST="${MAILPIT_SMTP_HOST:-127.0.0.1}"
+MAILPIT_SMTP_PORT="${MAILPIT_SMTP_PORT:-1025}"
+GOPHISH_REVIEW_SMTP_NAME="${GOPHISH_REVIEW_SMTP_NAME:-Mailpit Review SMTP}"
 DOCKER_HOST="${DOCKER_HOST:-unix:///host-run/docker.sock}"
 export DOCKER_HOST
 
@@ -82,6 +90,12 @@ GOPHISH_ADMIN_URL=$GOPHISH_ADMIN_URL
 GOPHISH_API_URL=$GOPHISH_API_URL
 GOPHISH_PUBLIC_URL=$GOPHISH_PUBLIC_URL
 GOPHISH_API_KEY=$GOPHISH_API_KEY
+MAILPIT_WEB_URL=$MAILPIT_WEB_URL
+MAILPIT_API_URL=$MAILPIT_API_URL
+MAILPIT_WEBROOT=$MAILPIT_WEBROOT
+MAILPIT_SMTP_HOST=$MAILPIT_SMTP_HOST
+MAILPIT_SMTP_PORT=$MAILPIT_SMTP_PORT
+GOPHISH_REVIEW_SMTP_NAME=$GOPHISH_REVIEW_SMTP_NAME
 EOF
   chmod 600 "$STATE_DIR/.env" 2>/dev/null || true
 
@@ -108,8 +122,87 @@ GoPhish is available locally for authorized security-awareness lab work:
 - Public landing base: $GOPHISH_PUBLIC_URL
 - API key: read GOPHISH_API_KEY from the environment; do not print it unless explicitly asked.
 
+Mailpit is available locally for review-only email previews:
+
+- Web UI: $MAILPIT_WEB_URL
+- API: $MAILPIT_API_URL
+- SMTP: $MAILPIT_SMTP_HOST:$MAILPIT_SMTP_PORT
+- GoPhish review SMTP profile: $GOPHISH_REVIEW_SMTP_NAME
+
 Only use GoPhish for authorized internal awareness simulations.
 EOF
+}
+
+wait_for_mailpit() {
+  local i
+  for i in $(seq 1 60); do
+    if curl -fsS --max-time 3 "$MAILPIT_WEB_URL/api/v1/info" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+start_mailpit() {
+  {
+    printf '=== starting Mailpit at %s ===\n' "$(date -Is)"
+    printf 'image=%s container=%s web=%s smtp=%s:%s\n' "$MAILPIT_IMAGE" "$MAILPIT_CONTAINER_NAME" "$MAILPIT_WEB_URL" "$MAILPIT_SMTP_HOST" "$MAILPIT_SMTP_PORT"
+  } >>"$LOG_FILE"
+  if docker inspect "$MAILPIT_CONTAINER_NAME" >/dev/null 2>&1; then
+    docker rm -f "$MAILPIT_CONTAINER_NAME" >>"$LOG_FILE" 2>&1 || true
+  fi
+  docker run -d \
+    --name "$MAILPIT_CONTAINER_NAME" \
+    --restart unless-stopped \
+    --no-healthcheck \
+    --network "container:$HOSTNAME" \
+    "$MAILPIT_IMAGE" \
+    --webroot "$MAILPIT_WEBROOT" >>"$LOG_FILE" 2>&1
+  wait_for_mailpit
+}
+
+ensure_gophish_review_smtp() {
+  python3 - "$GOPHISH_API_URL" "$GOPHISH_API_KEY" "$GOPHISH_REVIEW_SMTP_NAME" "$MAILPIT_SMTP_HOST:$MAILPIT_SMTP_PORT" <<'PY'
+import json
+import sys
+import urllib.request
+
+api_url, api_key, profile_name, smtp_host = sys.argv[1:5]
+
+def request(method, path, payload=None):
+    data = None if payload is None else json.dumps(payload).encode()
+    req = urllib.request.Request(
+        api_url.rstrip("/") + path,
+        data=data,
+        method=method,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        raw = resp.read()
+        return json.loads(raw.decode() or "null")
+
+payload = {
+    "name": profile_name,
+    "interface_type": "SMTP",
+    "host": smtp_host,
+    "from_address": "Iphish Training <training@example.local>",
+    "ignore_cert_errors": True,
+    "headers": [],
+}
+
+profiles = request("GET", "/smtp/")
+for profile in profiles:
+    if profile.get("name") == profile_name or profile.get("name") == "Mailpit SMTP (Test)":
+        profile.update(payload)
+        request("PUT", f"/smtp/{profile['id']}", profile)
+        break
+else:
+    request("POST", "/smtp/", payload)
+PY
 }
 
 prepare_gophish_state() {
@@ -188,6 +281,7 @@ PY
 start_gophish() {
   local host_project
   host_project="$(project_host_dir)"
+  start_mailpit
   prepare_gophish_state
   {
     printf '=== starting GoPhish at %s ===\n' "$(date -Is)"
@@ -206,6 +300,7 @@ start_gophish() {
     ./gophish --config /opt/gophish/config.json >>"$LOG_FILE" 2>&1
   wait_for_gophish
   configure_gophish_admin
+  ensure_gophish_review_smtp
   curl -fsS --max-time 5 -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaigns/" >/dev/null
 }
 
@@ -278,6 +373,11 @@ start_container() {
     -e GOPHISH_API_URL="$GOPHISH_API_URL" \
     -e GOPHISH_PUBLIC_URL="$GOPHISH_PUBLIC_URL" \
     -e GOPHISH_API_KEY="$GOPHISH_API_KEY" \
+    -e MAILPIT_WEB_URL="$MAILPIT_WEB_URL" \
+    -e MAILPIT_API_URL="$MAILPIT_API_URL" \
+    -e MAILPIT_SMTP_HOST="$MAILPIT_SMTP_HOST" \
+    -e MAILPIT_SMTP_PORT="$MAILPIT_SMTP_PORT" \
+    -e GOPHISH_REVIEW_SMTP_NAME="$GOPHISH_REVIEW_SMTP_NAME" \
     -v "$host_project/data/hermes:/opt/data" \
     "$IMAGE" gateway run >>"$LOG_FILE" 2>&1
 
@@ -317,9 +417,11 @@ start_tui() {
 health() {
   docker inspect -f '{{.State.Status}}' "$CONTAINER_NAME" 2>/dev/null | grep -qx running
   docker inspect -f '{{.State.Status}}' "$GOPHISH_CONTAINER_NAME" 2>/dev/null | grep -qx running
+  docker inspect -f '{{.State.Status}}' "$MAILPIT_CONTAINER_NAME" 2>/dev/null | grep -qx running
   curl -fsS --max-time 5 http://127.0.0.1:8642/health >/dev/null
   curl -fsS --max-time 5 "http://127.0.0.1:${TTYD_PORT}/" >/dev/null
   curl -fsS --max-time 5 -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaigns/" >/dev/null
+  curl -fsS --max-time 5 "$MAILPIT_WEB_URL/api/v1/info" >/dev/null
 }
 
 case "$ACTION" in
@@ -331,14 +433,21 @@ case "$ACTION" in
     start_gophish
     start_gophish_proxy
     ;;
+  start-mailpit)
+    start_mailpit
+    ;;
   stop)
     stop_tui
     docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
     docker rm -f "$GOPHISH_CONTAINER_NAME" >/dev/null 2>&1 || true
+    docker rm -f "$MAILPIT_CONTAINER_NAME" >/dev/null 2>&1 || true
     ;;
   stop-gophish)
     stop_gophish_proxy
     docker rm -f "$GOPHISH_CONTAINER_NAME" >/dev/null 2>&1 || true
+    ;;
+  stop-mailpit)
+    docker rm -f "$MAILPIT_CONTAINER_NAME" >/dev/null 2>&1 || true
     ;;
   restart)
     "$0" stop
@@ -349,12 +458,17 @@ case "$ACTION" in
     ;;
   gophish-health)
     docker inspect -f '{{.State.Status}}' "$GOPHISH_CONTAINER_NAME" 2>/dev/null | grep -qx running
+    docker inspect -f '{{.State.Status}}' "$MAILPIT_CONTAINER_NAME" 2>/dev/null | grep -qx running
     curl -fsS --max-time 5 "$GOPHISH_ADMIN_URL/login" >/dev/null
     curl -fsS --max-time 5 -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaigns/" >/dev/null
     curl -fsS --max-time 5 "http://127.0.0.1:${GOPHISH_PROXY_PORT}/projects/iphish-agent/applications/GoPhish/login" >/dev/null
     ;;
+  mailpit-health)
+    docker inspect -f '{{.State.Status}}' "$MAILPIT_CONTAINER_NAME" 2>/dev/null | grep -qx running
+    curl -fsS --max-time 5 "$MAILPIT_WEB_URL/api/v1/info" >/dev/null
+    ;;
   status)
-    docker ps -a --filter "name=$CONTAINER_NAME" --filter "name=$GOPHISH_CONTAINER_NAME" --format 'table {{.Names}}\t{{.Status}}'
+    docker ps -a --filter "name=$CONTAINER_NAME" --filter "name=$GOPHISH_CONTAINER_NAME" --filter "name=$MAILPIT_CONTAINER_NAME" --format 'table {{.Names}}\t{{.Status}}'
     ;;
   logs)
     docker logs --tail "${2:-120}" "$CONTAINER_NAME"
@@ -362,11 +476,14 @@ case "$ACTION" in
   gophish-logs)
     docker logs --tail "${2:-120}" "$GOPHISH_CONTAINER_NAME"
     ;;
+  mailpit-logs)
+    docker logs --tail "${2:-120}" "$MAILPIT_CONTAINER_NAME"
+    ;;
   tui-logs)
     tail -n "${2:-120}" "$TTYD_LOG_FILE"
     ;;
   *)
-    printf 'Usage: %s {start|start-gophish|stop|stop-gophish|restart|health|gophish-health|status|logs|gophish-logs|tui-logs}\n' "$0" >&2
+    printf 'Usage: %s {start|start-gophish|start-mailpit|stop|stop-gophish|stop-mailpit|restart|health|gophish-health|mailpit-health|status|logs|gophish-logs|mailpit-logs|tui-logs}\n' "$0" >&2
     exit 2
     ;;
 esac
