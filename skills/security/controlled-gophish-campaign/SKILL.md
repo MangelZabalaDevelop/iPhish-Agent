@@ -91,7 +91,7 @@ Use this loose flow:
 3. Use public design cues from the provided site URL. Do not hardcode any company.
 4. Create or reuse the GoPhish group, landing page, template, Mailpit SMTP profile, and campaign.
 5. Send review traffic to Mailpit first. Only use real SMTP after explicit approval.
-6. Run `iphishctl review CAMPAIGN_ID` and report the exact `mailpit_inbox_url`, `latest_mailpit_message_url`, and `landing_url` values it returns.
+6. Run `iphishctl review CAMPAIGN_ID` and report the exact raw URL lines it returns.
 7. If a local service is down, say which Workbench app must be started and stop there.
 
 For visuals, use ComfyUI when it will improve the campaign, but do not block the
@@ -168,6 +168,7 @@ misleading links. Use `GOPHISH_PUBLIC_URL` as the campaign URL.
 - Image prompts must say: "No text, no letters, no words, no numbers, no logo text, no signage, no captions in the image."
 - Never embed generated visuals until they pass visual review for objective match, no visible text, and no AI slop.
 - After launching the review campaign, use `iphishctl review CAMPAIGN_ID`; report only the user-facing Workbench URLs from that output. Do not report internal `127.0.0.1:8025` Mailpit URLs or a landing URL without `?rid=...`.
+- Put review URLs in a plain fenced text block. Do not format them as Markdown links like `[Mailpit](...)`, because the TUI may hide the actual URL.
 
 ## Final Response Format
 
@@ -180,4 +181,12 @@ Recipient(s):
 Created GoPhish objects:
 Review link or limitation:
 Needs approval before final SMTP:
+```
+
+For review links, use:
+
+```text
+MAILPIT_INBOX_URL=...
+MAILPIT_MESSAGE_URL=...
+LANDING_URL_1=...
 ```

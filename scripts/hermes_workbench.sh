@@ -127,7 +127,7 @@ def usage():
         "  iphishctl gophish METHOD /path [json-file|-]\n"
         "  iphishctl mailpit info|messages|message ID\n"
         "  iphishctl comfy status|queue|prompt json-file|-\n",
-        "  iphishctl review CAMPAIGN_ID\n",
+        "  iphishctl review CAMPAIGN_ID [--json]\n",
         file=sys.stderr,
     )
     return 2
@@ -225,9 +225,12 @@ def comfy(args):
 
 
 def review(args):
-    if len(args) != 1:
+    if len(args) not in {1, 2}:
         return usage()
     campaign_id = args[0]
+    as_json = len(args) == 2 and args[1] == "--json"
+    if len(args) == 2 and not as_json:
+        return usage()
     gophish_base = os.environ.get("GOPHISH_API_URL", "http://127.0.0.1:3333/api").rstrip("/")
     gophish_key = os.environ.get("GOPHISH_API_KEY", "local-gophish-api-key-change-me")
     mailpit_api = os.environ.get("MAILPIT_API_URL", "http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit/api/v1").rstrip("/")
@@ -252,18 +255,33 @@ def review(args):
                 }
             )
 
-    print_json(
-        {
-            "campaign_id": campaign.get("id"),
-            "campaign_name": campaign.get("name"),
-            "campaign_status": campaign.get("status"),
-            "mailpit_inbox_url": mailpit_user + "/",
-            "latest_mailpit_message_url": (mailpit_user + "/view/" + latest_message.get("ID")) if latest_message.get("ID") else None,
-            "latest_mailpit_subject": latest_message.get("Subject"),
-            "landing_links": landing_links,
-            "approval_note": "Review the Mailpit message and landing URL. Use real SMTP only after explicit user approval.",
-        }
-    )
+    payload = {
+        "campaign_id": campaign.get("id"),
+        "campaign_name": campaign.get("name"),
+        "campaign_status": campaign.get("status"),
+        "mailpit_inbox_url": mailpit_user + "/",
+        "latest_mailpit_message_url": (mailpit_user + "/view/" + latest_message.get("ID")) if latest_message.get("ID") else None,
+        "latest_mailpit_subject": latest_message.get("Subject"),
+        "landing_links": landing_links,
+        "approval_note": "Review the Mailpit message and landing URL. Use real SMTP only after explicit user approval.",
+    }
+    if as_json:
+        print_json(payload)
+        return 0
+
+    print(f"CAMPAIGN_ID={payload['campaign_id']}")
+    print(f"CAMPAIGN_NAME={payload['campaign_name']}")
+    print(f"CAMPAIGN_STATUS={payload['campaign_status']}")
+    print(f"MAILPIT_INBOX_URL={payload['mailpit_inbox_url']}")
+    if payload["latest_mailpit_message_url"]:
+        print(f"MAILPIT_MESSAGE_URL={payload['latest_mailpit_message_url']}")
+    if payload["latest_mailpit_subject"]:
+        print(f"MAILPIT_MESSAGE_SUBJECT={payload['latest_mailpit_subject']}")
+    for index, item in enumerate(landing_links, start=1):
+        print(f"LANDING_URL_{index}={item['landing_url']}")
+        print(f"LANDING_RECIPIENT_{index}={item['recipient']}")
+        print(f"LANDING_STATUS_{index}={item['status']}")
+    print("APPROVAL_NOTE=Review these raw URLs. Use real SMTP only after explicit user approval.")
     return 0
 
 
