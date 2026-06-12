@@ -188,6 +188,43 @@ wait_for_comfyui() {
   return 1
 }
 
+patch_comfyui_autoload() {
+  local i
+  for i in $(seq 1 60); do
+    if docker exec "$COMFYUI_CONTAINER_NAME" test -f /usr/local/lib/python3.12/dist-packages/comfyui_frontend_package/static/index.html >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  docker exec -i "$COMFYUI_CONTAINER_NAME" python3 - <<'PY'
+from pathlib import Path
+
+index = Path("/usr/local/lib/python3.12/dist-packages/comfyui_frontend_package/static/index.html")
+marker = "iphish-z-image-turbo-autoload"
+html = index.read_text()
+if marker not in html:
+    script = f"""<script id="{marker}">
+;(function () {{
+  try {{
+    if (localStorage.getItem("iphish.defaultWorkflow") === "z-image-turbo") return;
+    var request = new XMLHttpRequest();
+    request.open("GET", "userdata/workflows%2Fimage_z_image_turbo.json", false);
+    request.send(null);
+    if (request.status >= 200 && request.status < 300 && request.responseText) {{
+      JSON.parse(request.responseText);
+      localStorage.setItem("workflow", request.responseText);
+      localStorage.setItem("iphish.defaultWorkflow", "z-image-turbo");
+    }}
+  }} catch (error) {{
+    console.warn("Iphish could not preload the Z-Image-Turbo workflow", error);
+  }}
+}})();
+</script>"""
+    html = html.replace('<script type="module"', script + '<script type="module"', 1)
+    index.write_text(html)
+PY
+}
+
 start_comfyui() {
   local host_project
   host_project="$(project_host_dir)"
@@ -216,6 +253,7 @@ start_comfyui() {
     -v "$host_project/data/comfyui/user:/opt/ComfyUI/user" \
     -v "$host_project/data/comfyui/workflows:/opt/ComfyUI/user/default/workflows" \
     "$COMFYUI_IMAGE" >>"$LOG_FILE" 2>&1
+  patch_comfyui_autoload >>"$LOG_FILE" 2>&1 || true
   wait_for_comfyui
 }
 
