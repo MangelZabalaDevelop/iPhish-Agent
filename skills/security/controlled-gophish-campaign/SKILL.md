@@ -43,6 +43,7 @@ GOPHISH_PUBLIC_URL="${GOPHISH_PUBLIC_URL:-http://localhost:10000/projects/iphish
 GOPHISH_API_KEY="${GOPHISH_API_KEY:-local-gophish-api-key-change-me}"
 MAILPIT_WEB_URL="${MAILPIT_WEB_URL:-http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit}"
 MAILPIT_API_URL="${MAILPIT_API_URL:-http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit/api/v1}"
+MAILPIT_USER_URL="${MAILPIT_USER_URL:-http://localhost:10000/projects/iphish-agent/applications/Mailpit}"
 MAILPIT_SMTP_HOST="${MAILPIT_SMTP_HOST:-127.0.0.1}"
 MAILPIT_SMTP_PORT="${MAILPIT_SMTP_PORT:-1025}"
 GOPHISH_REVIEW_SMTP_NAME="${GOPHISH_REVIEW_SMTP_NAME:-Mailpit Review SMTP}"
@@ -59,6 +60,7 @@ iphishctl gophish GET /campaigns/
 iphishctl mailpit info
 iphishctl mailpit messages
 iphishctl comfy status
+iphishctl review CAMPAIGN_ID
 ```
 
 For create/update operations, write the JSON body to a temporary `.json` file
@@ -89,7 +91,8 @@ Use this loose flow:
 3. Use public design cues from the provided site URL. Do not hardcode any company.
 4. Create or reuse the GoPhish group, landing page, template, Mailpit SMTP profile, and campaign.
 5. Send review traffic to Mailpit first. Only use real SMTP after explicit approval.
-6. If a local service is down, say which Workbench app must be started and stop there.
+6. Run `iphishctl review CAMPAIGN_ID` and report the exact `mailpit_inbox_url`, `latest_mailpit_message_url`, and `landing_url` values it returns.
+7. If a local service is down, say which Workbench app must be started and stop there.
 
 For visuals, use ComfyUI when it will improve the campaign, but do not block the
 whole campaign if image generation is unavailable. In that case, create clean
@@ -152,6 +155,9 @@ Minimal campaign:
 {"name":"Training Campaign","template":{"name":"Training Email Template"},"page":{"name":"Training Landing Page"},"smtp":{"name":"Mailpit Review SMTP"},"url":"http://localhost:10000/projects/iphish-agent/applications/GoPhish/landing","groups":[{"name":"Training Review Group"}]}
 ```
 
+The campaign `url` is required. If it is missing, GoPhish may send unusable or
+misleading links. Use `GOPHISH_PUBLIC_URL` as the campaign URL.
+
 ## Quality Bar
 
 - The email and landing page should look like a controlled internal training artifact, not credential theft.
@@ -161,7 +167,7 @@ Minimal campaign:
 - If using generated visuals, use the `comfyui-z-image` skill and its visual review gate.
 - Image prompts must say: "No text, no letters, no words, no numbers, no logo text, no signage, no captions in the image."
 - Never embed generated visuals until they pass visual review for objective match, no visible text, and no AI slop.
-- After launching the review campaign, check Mailpit with `iphishctl mailpit messages` and report whether a message arrived.
+- After launching the review campaign, use `iphishctl review CAMPAIGN_ID`; report only the user-facing Workbench URLs from that output. Do not report internal `127.0.0.1:8025` Mailpit URLs or a landing URL without `?rid=...`.
 
 ## Final Response Format
 

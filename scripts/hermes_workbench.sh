@@ -27,11 +27,13 @@ GOPHISH_API_KEY="${GOPHISH_API_KEY:-local-gophish-api-key-change-me}"
 GOPHISH_ADMIN_PASSWORD_HASH="${GOPHISH_ADMIN_PASSWORD_HASH:-\$2a\$10\$I/Wbkx1K48wsS8TUg.BMV.iTrQEiAYcSkHXmrWfUk4OrMeKabsU26}"
 GOPHISH_ADMIN_URL="${GOPHISH_ADMIN_URL:-http://127.0.0.1:3333}"
 GOPHISH_API_URL="${GOPHISH_API_URL:-http://127.0.0.1:3333/api}"
-GOPHISH_PUBLIC_URL="${GOPHISH_PUBLIC_URL:-http://localhost:10000/projects/iphish-agent/applications/GoPhish/landing}"
+WORKBENCH_APP_BASE_URL="${WORKBENCH_APP_BASE_URL:-http://localhost:10000/projects/iphish-agent/applications}"
+GOPHISH_PUBLIC_URL="${GOPHISH_PUBLIC_URL:-${WORKBENCH_APP_BASE_URL}/GoPhish/landing}"
 GOPHISH_PROXY_PORT="${GOPHISH_PROXY_PORT:-3334}"
 MAILPIT_WEBROOT="${MAILPIT_WEBROOT:-/projects/iphish-agent/applications/Mailpit}"
 MAILPIT_WEB_URL="${MAILPIT_WEB_URL:-http://127.0.0.1:8025${MAILPIT_WEBROOT}}"
 MAILPIT_API_URL="${MAILPIT_API_URL:-${MAILPIT_WEB_URL}/api/v1}"
+MAILPIT_USER_URL="${MAILPIT_USER_URL:-${WORKBENCH_APP_BASE_URL}/Mailpit}"
 MAILPIT_SMTP_HOST="${MAILPIT_SMTP_HOST:-127.0.0.1}"
 MAILPIT_SMTP_PORT="${MAILPIT_SMTP_PORT:-1025}"
 GOPHISH_REVIEW_SMTP_NAME="${GOPHISH_REVIEW_SMTP_NAME:-Mailpit Review SMTP}"
@@ -95,9 +97,11 @@ HERMES_API_KEY=$API_KEY
 GOPHISH_ADMIN_URL=$GOPHISH_ADMIN_URL
 GOPHISH_API_URL=$GOPHISH_API_URL
 GOPHISH_PUBLIC_URL=$GOPHISH_PUBLIC_URL
+WORKBENCH_APP_BASE_URL=$WORKBENCH_APP_BASE_URL
 GOPHISH_API_KEY=$GOPHISH_API_KEY
 MAILPIT_WEB_URL=$MAILPIT_WEB_URL
 MAILPIT_API_URL=$MAILPIT_API_URL
+MAILPIT_USER_URL=$MAILPIT_USER_URL
 MAILPIT_WEBROOT=$MAILPIT_WEBROOT
 MAILPIT_SMTP_HOST=$MAILPIT_SMTP_HOST
 MAILPIT_SMTP_PORT=$MAILPIT_SMTP_PORT
@@ -123,6 +127,7 @@ def usage():
         "  iphishctl gophish METHOD /path [json-file|-]\n"
         "  iphishctl mailpit info|messages|message ID\n"
         "  iphishctl comfy status|queue|prompt json-file|-\n",
+        "  iphishctl review CAMPAIGN_ID\n",
         file=sys.stderr,
     )
     return 2
@@ -177,6 +182,12 @@ def gophish(args):
     key = os.environ.get("GOPHISH_API_KEY", "local-gophish-api-key-change-me")
     if not path.startswith("/"):
         path = "/" + path
+    if payload is not None and method in {"POST", "PUT"} and path.startswith("/campaigns"):
+        if not payload.get("url"):
+            payload["url"] = os.environ.get(
+                "GOPHISH_PUBLIC_URL",
+                "http://localhost:10000/projects/iphish-agent/applications/GoPhish/landing",
+            )
     print_json(request(method, base + path, payload, {"Authorization": f"Bearer {key}"}))
     return 0
 
@@ -213,6 +224,49 @@ def comfy(args):
     return 0
 
 
+def review(args):
+    if len(args) != 1:
+        return usage()
+    campaign_id = args[0]
+    gophish_base = os.environ.get("GOPHISH_API_URL", "http://127.0.0.1:3333/api").rstrip("/")
+    gophish_key = os.environ.get("GOPHISH_API_KEY", "local-gophish-api-key-change-me")
+    mailpit_api = os.environ.get("MAILPIT_API_URL", "http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit/api/v1").rstrip("/")
+    mailpit_user = os.environ.get("MAILPIT_USER_URL", "http://localhost:10000/projects/iphish-agent/applications/Mailpit").rstrip("/")
+    public_url = os.environ.get("GOPHISH_PUBLIC_URL", "http://localhost:10000/projects/iphish-agent/applications/GoPhish/landing").rstrip("/")
+
+    campaign = request("GET", f"{gophish_base}/campaigns/{campaign_id}/results", headers={"Authorization": f"Bearer {gophish_key}"})
+    messages = request("GET", f"{mailpit_api}/messages")
+    message_items = messages.get("messages", []) if isinstance(messages, dict) else messages or []
+    latest_message = message_items[0] if message_items else {}
+
+    landing_links = []
+    for result in campaign.get("results", []):
+        rid = result.get("id")
+        if rid:
+            landing_links.append(
+                {
+                    "recipient": result.get("email"),
+                    "status": result.get("status"),
+                    "rid": rid,
+                    "landing_url": f"{public_url}?rid={rid}",
+                }
+            )
+
+    print_json(
+        {
+            "campaign_id": campaign.get("id"),
+            "campaign_name": campaign.get("name"),
+            "campaign_status": campaign.get("status"),
+            "mailpit_inbox_url": mailpit_user + "/",
+            "latest_mailpit_message_url": (mailpit_user + "/view/" + latest_message.get("ID")) if latest_message.get("ID") else None,
+            "latest_mailpit_subject": latest_message.get("Subject"),
+            "landing_links": landing_links,
+            "approval_note": "Review the Mailpit message and landing URL. Use real SMTP only after explicit user approval.",
+        }
+    )
+    return 0
+
+
 def main():
     if len(sys.argv) < 2:
         return usage()
@@ -223,6 +277,8 @@ def main():
         return mailpit(args)
     if service == "comfy":
         return comfy(args)
+    if service == "review":
+        return review(args)
     return usage()
 
 
@@ -262,7 +318,8 @@ GoPhish is available locally for authorized security-awareness lab work:
 
 Mailpit is available locally for review-only email previews:
 
-- Web UI: $MAILPIT_WEB_URL
+- Internal Web/API base: $MAILPIT_WEB_URL
+- User-facing Web UI: $MAILPIT_USER_URL/
 - API: $MAILPIT_API_URL
 - SMTP: $MAILPIT_SMTP_HOST:$MAILPIT_SMTP_PORT
 - GoPhish review SMTP profile: $GOPHISH_REVIEW_SMTP_NAME
@@ -275,6 +332,9 @@ ComfyUI is available locally for safe review images:
 
 Use iphishctl for routine GoPhish, Mailpit, and ComfyUI service access.
 Do not generate one-off API client scripts for normal campaign work.
+After creating a review campaign, run iphishctl review <campaign_id> and report
+those exact user-facing URLs. Do not report internal 127.0.0.1 service URLs to
+the user unless explicitly debugging internals.
 
 Only use GoPhish for authorized internal awareness simulations. This Workbench
 lab disables technical command approval popups. Keep the flow practical: build
@@ -665,12 +725,14 @@ start_container() {
     -e HERMES_MODEL="$MODEL" \
     -e HERMES_BASE_URL="$(normalize_base_url "$BASE_URL")" \
     -e HERMES_API_KEY="$API_KEY" \
+    -e WORKBENCH_APP_BASE_URL="$WORKBENCH_APP_BASE_URL" \
     -e GOPHISH_ADMIN_URL="$GOPHISH_ADMIN_URL" \
     -e GOPHISH_API_URL="$GOPHISH_API_URL" \
     -e GOPHISH_PUBLIC_URL="$GOPHISH_PUBLIC_URL" \
     -e GOPHISH_API_KEY="$GOPHISH_API_KEY" \
     -e MAILPIT_WEB_URL="$MAILPIT_WEB_URL" \
     -e MAILPIT_API_URL="$MAILPIT_API_URL" \
+    -e MAILPIT_USER_URL="$MAILPIT_USER_URL" \
     -e MAILPIT_SMTP_HOST="$MAILPIT_SMTP_HOST" \
     -e MAILPIT_SMTP_PORT="$MAILPIT_SMTP_PORT" \
     -e GOPHISH_REVIEW_SMTP_NAME="$GOPHISH_REVIEW_SMTP_NAME" \
