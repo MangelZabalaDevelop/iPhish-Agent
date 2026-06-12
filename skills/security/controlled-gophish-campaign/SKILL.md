@@ -118,9 +118,12 @@ Use this loose flow:
 6. Run `iphishctl review CAMPAIGN_ID` and report the exact raw URL lines it returns.
 7. If a local service is down, say which Workbench app must be started and stop there.
 
-For visuals, use ComfyUI when it will improve the campaign, but do not block the
-whole campaign if image generation is unavailable. In that case, create clean
-HTML/CSS without generated imagery and explain the limitation.
+For visuals, use ComfyUI when it will improve the campaign. If the user asks to
+use a site's design, logos, colors, brand, visual style, or content as campaign
+reference, attempt to create at least one review-safe image with the
+`comfyui-z-image` skill before finalizing the email and landing page. If image
+generation is unavailable, continue with clean HTML/CSS but explicitly report
+that ComfyUI was unavailable and no image was created.
 
 ## GoPhish API Shape
 
@@ -189,6 +192,9 @@ misleading links. Use `GOPHISH_PUBLIC_URL` as the campaign URL.
 - The landing page must include a visible training-safe purpose and only approved fields.
 - Keep copy concise and believable without urgency, threats, account lockout claims, or coercion.
 - If using generated visuals, use the `comfyui-z-image` skill and its visual review gate.
+- For campaigns based on a site's visual identity, do not skip ComfyUI silently.
+  Generate one safe non-text visual asset, or clearly state the service/tool
+  error that prevented image generation.
 - Image prompts must say: "No text, no letters, no words, no numbers, no logo text, no signage, no captions in the image."
 - Never embed generated visuals until they pass visual review for objective match, no visible text, and no AI slop.
 - After launching the review campaign, use `iphishctl review CAMPAIGN_ID`; report only the user-facing Workbench URLs from that output. Do not report internal `127.0.0.1:8025` Mailpit URLs or a landing URL without `?rid=...`.

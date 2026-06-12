@@ -350,6 +350,11 @@ ComfyUI is available locally for safe review images:
 - API: $COMFYUI_API_URL
 - Model workflow: Z-Image-Turbo
 
+When a campaign request asks for a site's design, logos, colors, brand, visual
+style, or content as reference, attempt to create at least one safe visual asset
+with the comfyui-z-image skill. Do not skip image generation silently. If ComfyUI
+is unavailable, say that plainly and continue with HTML/CSS.
+
 Use iphishctl for routine GoPhish, Mailpit, and ComfyUI service access.
 Do not generate one-off API client scripts for normal campaign work.
 After creating a review campaign, run iphishctl review <campaign_id> and report
