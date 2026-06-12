@@ -16,6 +16,8 @@ GOPHISH_CONTAINER_NAME="${GOPHISH_CONTAINER_NAME:-xpectra-iphish-agent-gophish}"
 GOPHISH_IMAGE="${GOPHISH_IMAGE:-xpectra/gophish-arm64:v0.12.1}"
 MAILPIT_CONTAINER_NAME="${MAILPIT_CONTAINER_NAME:-xpectra-iphish-agent-mailpit}"
 MAILPIT_IMAGE="${MAILPIT_IMAGE:-axllent/mailpit:latest}"
+COMFYUI_CONTAINER_NAME="${COMFYUI_CONTAINER_NAME:-xpectra-iphish-agent-comfyui}"
+COMFYUI_IMAGE="${COMFYUI_IMAGE:-xpectra/comfyui-workbench:latest}"
 MODEL="${HERMES_MODEL:-Qwen3.6-35B-A3B-NVFP4}"
 BASE_URL="${HERMES_BASE_URL:-http://192.168.0.8:9494}"
 API_KEY="${HERMES_API_KEY:-local-external-vllm-placeholder}"
@@ -33,6 +35,10 @@ MAILPIT_API_URL="${MAILPIT_API_URL:-${MAILPIT_WEB_URL}/api/v1}"
 MAILPIT_SMTP_HOST="${MAILPIT_SMTP_HOST:-127.0.0.1}"
 MAILPIT_SMTP_PORT="${MAILPIT_SMTP_PORT:-1025}"
 GOPHISH_REVIEW_SMTP_NAME="${GOPHISH_REVIEW_SMTP_NAME:-Mailpit Review SMTP}"
+COMFYUI_WEBROOT="${COMFYUI_WEBROOT:-/projects/iphish-agent/applications/ComfyUI}"
+COMFYUI_WEB_URL="${COMFYUI_WEB_URL:-http://127.0.0.1:8188${COMFYUI_WEBROOT}}"
+COMFYUI_API_URL="${COMFYUI_API_URL:-$COMFYUI_WEB_URL}"
+COMFYUI_DIRECT_URL="${COMFYUI_DIRECT_URL:-http://127.0.0.1:8188}"
 DOCKER_HOST="${DOCKER_HOST:-unix:///host-run/docker.sock}"
 export DOCKER_HOST
 
@@ -73,11 +79,11 @@ prepare_state() {
   mkdir -p "$STATE_DIR" "$(dirname "$LOG_FILE")"
   repair_state_permissions "$host_project"
   chmod 700 "$STATE_DIR" 2>/dev/null || true
-  mkdir -p "$STATE_DIR/skills/security"
-  if [ -d "$PROJECT_DIR/skills/security/controlled-gophish-campaign" ]; then
-    rm -rf "$STATE_DIR/skills/security/controlled-gophish-campaign"
-    cp -R "$PROJECT_DIR/skills/security/controlled-gophish-campaign" "$STATE_DIR/skills/security/"
-    chmod -R u+rwX,go+rX "$STATE_DIR/skills/security/controlled-gophish-campaign" 2>/dev/null || true
+  if [ -d "$PROJECT_DIR/skills" ]; then
+    rm -rf "$STATE_DIR/skills"
+    mkdir -p "$STATE_DIR"
+    cp -R "$PROJECT_DIR/skills" "$STATE_DIR/"
+    chmod -R u+rwX,go+rX "$STATE_DIR/skills" 2>/dev/null || true
   fi
 
   cat >"$STATE_DIR/.env" <<EOF
@@ -96,6 +102,9 @@ MAILPIT_WEBROOT=$MAILPIT_WEBROOT
 MAILPIT_SMTP_HOST=$MAILPIT_SMTP_HOST
 MAILPIT_SMTP_PORT=$MAILPIT_SMTP_PORT
 GOPHISH_REVIEW_SMTP_NAME=$GOPHISH_REVIEW_SMTP_NAME
+COMFYUI_WEB_URL=$COMFYUI_WEB_URL
+COMFYUI_API_URL=$COMFYUI_API_URL
+COMFYUI_DIRECT_URL=$COMFYUI_DIRECT_URL
 EOF
   chmod 600 "$STATE_DIR/.env" 2>/dev/null || true
 
@@ -129,6 +138,12 @@ Mailpit is available locally for review-only email previews:
 - SMTP: $MAILPIT_SMTP_HOST:$MAILPIT_SMTP_PORT
 - GoPhish review SMTP profile: $GOPHISH_REVIEW_SMTP_NAME
 
+ComfyUI is available locally for safe review images:
+
+- Web UI: $COMFYUI_WEB_URL
+- API: $COMFYUI_API_URL
+- Model workflow: Z-Image-Turbo
+
 Only use GoPhish for authorized internal awareness simulations.
 EOF
 }
@@ -160,6 +175,75 @@ start_mailpit() {
     "$MAILPIT_IMAGE" \
     --webroot "$MAILPIT_WEBROOT" >>"$LOG_FILE" 2>&1
   wait_for_mailpit
+}
+
+wait_for_comfyui() {
+  local i
+  for i in $(seq 1 180); do
+    if curl -fsS --max-time 3 "$COMFYUI_DIRECT_URL/system_stats" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+start_comfyui() {
+  local host_project
+  host_project="$(project_host_dir)"
+  mkdir -p "$PROJECT_DIR/data/comfyui/models" \
+    "$PROJECT_DIR/data/comfyui/input" \
+    "$PROJECT_DIR/data/comfyui/output" \
+    "$PROJECT_DIR/data/comfyui/user" \
+    "$PROJECT_DIR/data/comfyui/workflows"
+  ensure_z_image_models
+  {
+    printf '=== starting ComfyUI at %s ===\n' "$(date -Is)"
+    printf 'image=%s container=%s web=%s api=%s\n' "$COMFYUI_IMAGE" "$COMFYUI_CONTAINER_NAME" "$COMFYUI_WEB_URL" "$COMFYUI_API_URL"
+  } >>"$LOG_FILE"
+  if docker inspect "$COMFYUI_CONTAINER_NAME" >/dev/null 2>&1; then
+    docker rm -f "$COMFYUI_CONTAINER_NAME" >>"$LOG_FILE" 2>&1 || true
+  fi
+  docker run -d \
+    --name "$COMFYUI_CONTAINER_NAME" \
+    --restart unless-stopped \
+    --gpus all \
+    --ipc=host \
+    --network "container:$HOSTNAME" \
+    -v "$host_project/data/comfyui/models:/opt/ComfyUI/models" \
+    -v "$host_project/data/comfyui/input:/opt/ComfyUI/input" \
+    -v "$host_project/data/comfyui/output:/opt/ComfyUI/output" \
+    -v "$host_project/data/comfyui/user:/opt/ComfyUI/user" \
+    -v "$host_project/data/comfyui/workflows:/opt/ComfyUI/user/default/workflows" \
+    "$COMFYUI_IMAGE" >>"$LOG_FILE" 2>&1
+  wait_for_comfyui
+}
+
+download_model() {
+  local url="$1"
+  local output="$2"
+  if [ -s "$output" ]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$output")"
+  {
+    printf 'downloading %s\n' "$output"
+    printf 'source=%s\n' "$url"
+  } >>"$LOG_FILE"
+  curl -L --fail --retry 5 --retry-delay 5 -C - -o "$output.part" "$url" >>"$LOG_FILE" 2>&1
+  mv "$output.part" "$output"
+}
+
+ensure_z_image_models() {
+  download_model \
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" \
+    "$PROJECT_DIR/data/comfyui/models/text_encoders/qwen_3_4b.safetensors"
+  download_model \
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" \
+    "$PROJECT_DIR/data/comfyui/models/diffusion_models/z_image_turbo_bf16.safetensors"
+  download_model \
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors" \
+    "$PROJECT_DIR/data/comfyui/models/vae/ae.safetensors"
 }
 
 ensure_gophish_review_smtp() {
@@ -378,6 +462,9 @@ start_container() {
     -e MAILPIT_SMTP_HOST="$MAILPIT_SMTP_HOST" \
     -e MAILPIT_SMTP_PORT="$MAILPIT_SMTP_PORT" \
     -e GOPHISH_REVIEW_SMTP_NAME="$GOPHISH_REVIEW_SMTP_NAME" \
+    -e COMFYUI_WEB_URL="$COMFYUI_WEB_URL" \
+    -e COMFYUI_API_URL="$COMFYUI_API_URL" \
+    -e COMFYUI_DIRECT_URL="$COMFYUI_DIRECT_URL" \
     -v "$host_project/data/hermes:/opt/data" \
     "$IMAGE" gateway run >>"$LOG_FILE" 2>&1
 
@@ -436,11 +523,15 @@ case "$ACTION" in
   start-mailpit)
     start_mailpit
     ;;
+  start-comfyui)
+    start_comfyui
+    ;;
   stop)
     stop_tui
     docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
     docker rm -f "$GOPHISH_CONTAINER_NAME" >/dev/null 2>&1 || true
     docker rm -f "$MAILPIT_CONTAINER_NAME" >/dev/null 2>&1 || true
+    docker rm -f "$COMFYUI_CONTAINER_NAME" >/dev/null 2>&1 || true
     ;;
   stop-gophish)
     stop_gophish_proxy
@@ -448,6 +539,9 @@ case "$ACTION" in
     ;;
   stop-mailpit)
     docker rm -f "$MAILPIT_CONTAINER_NAME" >/dev/null 2>&1 || true
+    ;;
+  stop-comfyui)
+    docker rm -f "$COMFYUI_CONTAINER_NAME" >/dev/null 2>&1 || true
     ;;
   restart)
     "$0" stop
@@ -467,8 +561,12 @@ case "$ACTION" in
     docker inspect -f '{{.State.Status}}' "$MAILPIT_CONTAINER_NAME" 2>/dev/null | grep -qx running
     curl -fsS --max-time 5 "$MAILPIT_WEB_URL/api/v1/info" >/dev/null
     ;;
+  comfyui-health)
+    docker inspect -f '{{.State.Status}}' "$COMFYUI_CONTAINER_NAME" 2>/dev/null | grep -qx running
+    curl -fsS --max-time 5 "$COMFYUI_DIRECT_URL/system_stats" >/dev/null
+    ;;
   status)
-    docker ps -a --filter "name=$CONTAINER_NAME" --filter "name=$GOPHISH_CONTAINER_NAME" --filter "name=$MAILPIT_CONTAINER_NAME" --format 'table {{.Names}}\t{{.Status}}'
+    docker ps -a --filter "name=$CONTAINER_NAME" --filter "name=$GOPHISH_CONTAINER_NAME" --filter "name=$MAILPIT_CONTAINER_NAME" --filter "name=$COMFYUI_CONTAINER_NAME" --format 'table {{.Names}}\t{{.Status}}'
     ;;
   logs)
     docker logs --tail "${2:-120}" "$CONTAINER_NAME"
@@ -479,11 +577,14 @@ case "$ACTION" in
   mailpit-logs)
     docker logs --tail "${2:-120}" "$MAILPIT_CONTAINER_NAME"
     ;;
+  comfyui-logs)
+    docker logs --tail "${2:-120}" "$COMFYUI_CONTAINER_NAME"
+    ;;
   tui-logs)
     tail -n "${2:-120}" "$TTYD_LOG_FILE"
     ;;
   *)
-    printf 'Usage: %s {start|start-gophish|start-mailpit|stop|stop-gophish|stop-mailpit|restart|health|gophish-health|mailpit-health|status|logs|gophish-logs|mailpit-logs|tui-logs}\n' "$0" >&2
+    printf 'Usage: %s {start|start-gophish|start-mailpit|start-comfyui|stop|stop-gophish|stop-mailpit|stop-comfyui|restart|health|gophish-health|mailpit-health|comfyui-health|status|logs|gophish-logs|mailpit-logs|comfyui-logs|tui-logs}\n' "$0" >&2
     exit 2
     ;;
 esac

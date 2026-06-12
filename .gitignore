@@ -57,5 +57,9 @@ data/scratch/*
 !data/scratch/.gitkeep
 data/hermes/
 data/gophish/
+data/comfyui/models/
+data/comfyui/input/
+data/comfyui/output/
+data/comfyui/user/
 logs/
 .env

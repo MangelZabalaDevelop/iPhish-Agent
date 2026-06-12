@@ -5,6 +5,7 @@ Simple NVIDIA AI Workbench project for running:
 - Iphish Agent, powered by Hermes.
 - GoPhish, for authorized security-awareness campaign testing.
 - Mailpit, for local email review before any final send.
+- ComfyUI, for local review images with Z-Image-Turbo.
 
 ## First Setup
 
@@ -28,6 +29,12 @@ Use the IP and port of your running vLLM server. If your vLLM is already using
 4. Click **Open GoPhish** to open the GoPhish admin panel.
 5. Start **Mailpit**.
 6. Click **Open Mailpit** to review test emails.
+7. Start **ComfyUI** when the agent needs images.
+8. Click **Open ComfyUI** to inspect generated images and workflows.
+
+The first ComfyUI start can take a while because it downloads the official
+Z-Image-Turbo files. After that, the files stay local in the project data
+folder.
 
 ## GoPhish Login
 
@@ -48,10 +55,30 @@ Workbench starts these local containers:
 xpectra-iphish-agent
 xpectra-iphish-agent-gophish
 xpectra-iphish-agent-mailpit
+xpectra-iphish-agent-comfyui
 ```
 
 The agent includes a small local Hermes skill named
 `controlled-gophish-campaign`. It teaches Hermes how to create safe,
 authorized GoPhish awareness campaigns and requires review before final SMTP.
+
+The agent also includes `comfyui-z-image`, a small Hermes skill for creating
+campaign-safe images through ComfyUI. It uses the Z-Image-Turbo workflow and
+requires generated images to avoid visible text and pass visual review before
+use.
+
+ComfyUI model files are stored under:
+
+```text
+data/comfyui/models/
+```
+
+The configured Z-Image-Turbo files are:
+
+```text
+data/comfyui/models/text_encoders/qwen_3_4b.safetensors
+data/comfyui/models/diffusion_models/z_image_turbo_bf16.safetensors
+data/comfyui/models/vae/ae.safetensors
+```
 
 No NemoClaw, OpenShell, or legacy IPhish files are included in this project.

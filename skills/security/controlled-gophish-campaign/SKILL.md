@@ -30,7 +30,7 @@ blue-team awareness exercise.
 
 ## Local Services
 
-GoPhish and Mailpit are local to this Workbench project.
+GoPhish, Mailpit, and ComfyUI are local to this Workbench project.
 
 ```bash
 GOPHISH_ADMIN_URL="${GOPHISH_ADMIN_URL:-http://127.0.0.1:3333}"
@@ -42,6 +42,9 @@ MAILPIT_API_URL="${MAILPIT_API_URL:-http://127.0.0.1:8025/projects/iphish-agent/
 MAILPIT_SMTP_HOST="${MAILPIT_SMTP_HOST:-127.0.0.1}"
 MAILPIT_SMTP_PORT="${MAILPIT_SMTP_PORT:-1025}"
 GOPHISH_REVIEW_SMTP_NAME="${GOPHISH_REVIEW_SMTP_NAME:-Mailpit Review SMTP}"
+COMFYUI_WEB_URL="${COMFYUI_WEB_URL:-http://127.0.0.1:8188/projects/iphish-agent/applications/ComfyUI}"
+COMFYUI_API_URL="${COMFYUI_API_URL:-http://127.0.0.1:8188}"
+COMFYUI_DIRECT_URL="${COMFYUI_DIRECT_URL:-http://127.0.0.1:8188}"
 ```
 
 Call the API with:
@@ -49,6 +52,7 @@ Call the API with:
 ```bash
 curl -fsS -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaigns/"
 curl -fsS "$MAILPIT_API_URL/info"
+curl -fsS "$COMFYUI_DIRECT_URL/system_stats"
 ```
 
 ## Workflow
@@ -63,6 +67,7 @@ curl -fsS "$MAILPIT_API_URL/info"
    - landing page HTML
    - campaign name
    - safe training rationale
+   - optional image objective for the `comfyui-z-image` skill
 6. Create or reuse GoPhish objects in this order:
    - group
    - landing page
@@ -120,7 +125,9 @@ Minimal campaign:
 - Use `{{.URL}}` for the GoPhish tracking link in the email.
 - The landing page must include a visible training-safe purpose and only approved fields.
 - Keep copy concise and believable without urgency, threats, account lockout claims, or coercion.
-- If using generated visuals, prompts must say: "No text, no letters, no words in the image."
+- If using generated visuals, use the `comfyui-z-image` skill and its visual review gate.
+- Image prompts must say: "No text, no letters, no words, no numbers, no logo text, no signage, no captions in the image."
+- Never embed generated visuals until they pass visual review for objective match, no visible text, and no AI slop.
 - After launching the review campaign, check Mailpit with `GET $MAILPIT_API_URL/messages` and report whether a message arrived.
 
 ## Final Response Format

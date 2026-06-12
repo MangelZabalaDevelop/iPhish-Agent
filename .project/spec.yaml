@@ -116,6 +116,22 @@ execution:
             proxy:
                 trim_prefix: false
             url_command: bash -lc 'echo http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit'
+        - name: ComfyUI
+          type: custom
+          class: webapp
+          start_command: bash -lc '/project/scripts/hermes_workbench.sh start-comfyui'
+          health_check_command: bash -lc '/project/scripts/hermes_workbench.sh comfyui-health'
+          stop_command: bash -lc '/project/scripts/hermes_workbench.sh stop-comfyui'
+          user_msg: Use the Open ComfyUI button.
+          logfile_path: /project/logs/iphish-agent.log
+          timeout_seconds: 2400
+          icon_url: ""
+          webapp_options:
+            autolaunch: false
+            port: "8188"
+            proxy:
+                trim_prefix: true
+            url_command: bash -lc 'echo http://127.0.0.1:8188'
     resources:
         gpu:
             requested: 0
