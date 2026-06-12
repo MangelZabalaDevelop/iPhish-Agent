@@ -131,7 +131,7 @@ execution:
             port: "8188"
             proxy:
                 trim_prefix: true
-            url_command: bash -lc 'echo http://127.0.0.1:8188'
+            url_command: bash -lc 'echo http://127.0.0.1:8188/projects/iphish-agent/applications/ComfyUI/'
     resources:
         gpu:
             requested: 0
