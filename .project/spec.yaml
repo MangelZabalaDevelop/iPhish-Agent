@@ -115,7 +115,7 @@ execution:
             port: "8025"
             proxy:
                 trim_prefix: false
-            url_command: bash -lc 'echo http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit'
+            url_command: bash -lc 'echo http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit/'
         - name: ComfyUI
           type: custom
           class: webapp
