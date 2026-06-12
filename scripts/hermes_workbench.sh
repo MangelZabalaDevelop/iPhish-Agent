@@ -197,6 +197,7 @@ patch_comfyui_autoload() {
     sleep 1
   done
   docker exec -i "$COMFYUI_CONTAINER_NAME" python3 - <<'PY'
+import json
 from pathlib import Path
 
 index = Path("/usr/local/lib/python3.12/dist-packages/comfyui_frontend_package/static/index.html")
@@ -206,14 +207,16 @@ if marker not in html:
     script = f"""<script id="{marker}">
 ;(function () {{
   try {{
-    if (localStorage.getItem("iphish.defaultWorkflow") === "z-image-turbo") return;
     var request = new XMLHttpRequest();
     request.open("GET", "userdata/workflows%2Fimage_z_image_turbo.json", false);
     request.send(null);
     if (request.status >= 200 && request.status < 300 && request.responseText) {{
-      JSON.parse(request.responseText);
-      localStorage.setItem("workflow", request.responseText);
-      localStorage.setItem("iphish.defaultWorkflow", "z-image-turbo");
+      var workflow = JSON.parse(request.responseText);
+      var current = localStorage.getItem("workflow") || "";
+      if (!current || current.indexOf("z_image_turbo_bf16.safetensors") === -1) {{
+        localStorage.setItem("workflow", JSON.stringify(workflow));
+        localStorage.setItem("iphish.defaultWorkflow", "z-image-turbo");
+      }}
     }}
   }} catch (error) {{
     console.warn("Iphish could not preload the Z-Image-Turbo workflow", error);
@@ -222,6 +225,17 @@ if marker not in html:
 </script>"""
     html = html.replace('<script type="module"', script + '<script type="module"', 1)
     index.write_text(html)
+
+settings = Path("/opt/ComfyUI/user/default/comfy.settings.json")
+settings.parent.mkdir(parents=True, exist_ok=True)
+try:
+    data = json.loads(settings.read_text()) if settings.exists() else {}
+except json.JSONDecodeError:
+    data = {}
+data["Comfy.Workflow.Persist"] = True
+data["Comfy.EnableWorkflowViewRestore"] = True
+data["Comfy.TutorialCompleted"] = True
+settings.write_text(json.dumps(data, indent=2, sort_keys=True))
 PY
 }
 
