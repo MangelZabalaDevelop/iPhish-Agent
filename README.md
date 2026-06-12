@@ -17,6 +17,8 @@ GOPHISH_API_KEY=local-gophish-api-key-change-me
 
 3. Start the `Iphish Agent` Application.
 4. Click **Open**. Workbench opens a browser terminal running the Hermes TUI.
+5. Start the `GoPhish` Application when you want the admin UI button, then
+   click **Open**.
 
 The Workbench Application starts two local containers on the Project Container
 network:

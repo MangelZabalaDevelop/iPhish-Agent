@@ -281,10 +281,17 @@ health() {
 case "$ACTION" in
   start)
     start_container
+    start_tui
+    ;;
+  start-gophish)
+    start_gophish
     ;;
   stop)
     stop_tui
     docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    docker rm -f "$GOPHISH_CONTAINER_NAME" >/dev/null 2>&1 || true
+    ;;
+  stop-gophish)
     docker rm -f "$GOPHISH_CONTAINER_NAME" >/dev/null 2>&1 || true
     ;;
   restart)
@@ -293,6 +300,11 @@ case "$ACTION" in
     ;;
   health)
     health
+    ;;
+  gophish-health)
+    docker inspect -f '{{.State.Status}}' "$GOPHISH_CONTAINER_NAME" 2>/dev/null | grep -qx running
+    curl -fsS --max-time 5 "$GOPHISH_ADMIN_URL/login" >/dev/null
+    curl -fsS --max-time 5 -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaigns/" >/dev/null
     ;;
   status)
     docker ps -a --filter "name=$CONTAINER_NAME" --filter "name=$GOPHISH_CONTAINER_NAME" --format 'table {{.Names}}\t{{.Status}}'
@@ -307,7 +319,7 @@ case "$ACTION" in
     tail -n "${2:-120}" "$TTYD_LOG_FILE"
     ;;
   *)
-    printf 'Usage: %s {start|stop|restart|health|status|logs}\n' "$0" >&2
+    printf 'Usage: %s {start|start-gophish|stop|stop-gophish|restart|health|gophish-health|status|logs|gophish-logs|tui-logs}\n' "$0" >&2
     exit 2
     ;;
 esac

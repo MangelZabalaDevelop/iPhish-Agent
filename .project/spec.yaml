@@ -84,6 +84,22 @@ execution:
             proxy:
                 trim_prefix: true
             url_command: bash -lc 'echo http://127.0.0.1:9119'
+        - name: GoPhish
+          type: custom
+          class: webapp
+          start_command: bash -lc '/project/scripts/hermes_workbench.sh start-gophish'
+          health_check_command: bash -lc '/project/scripts/hermes_workbench.sh gophish-health'
+          stop_command: bash -lc '/project/scripts/hermes_workbench.sh stop-gophish'
+          user_msg: GoPhish admin is available at {{URL}}.
+          logfile_path: /project/logs/iphish-agent.log
+          timeout_seconds: 120
+          icon_url: ""
+          webapp_options:
+            autolaunch: false
+            port: "3333"
+            proxy:
+                trim_prefix: true
+            url_command: bash -lc 'echo http://127.0.0.1:3333'
     resources:
         gpu:
             requested: 0
