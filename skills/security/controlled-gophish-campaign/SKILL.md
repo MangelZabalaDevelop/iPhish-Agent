@@ -18,7 +18,7 @@ Use this skill when the user asks to create an authorized phishing simulation,
 security-awareness campaign, GoPhish campaign, training email, landing page, or
 blue-team awareness exercise.
 
-## Hard Rules
+## Non-Negotiables
 
 - Communicate with the user in English only.
 - Only create benign, authorized awareness simulations.
@@ -27,6 +27,10 @@ blue-team awareness exercise.
 - Landing forms may collect low-risk training fields only, such as name, username, email, department, or country.
 - Do not send a final campaign through real SMTP until the user explicitly approves the reviewed content.
 - If SMTP/Mailpit is unavailable, stop and explain exactly what is missing. Do not pretend the test email was sent.
+
+Everything else is flexible. Prefer progress over ceremony: use reasonable
+defaults, keep the user informed, and ask only for information that is truly
+required to continue safely.
 
 ## Local Services
 
@@ -72,27 +76,24 @@ Do not create one-off Python API clients for routine GoPhish, Mailpit, or
 ComfyUI access. Do not pipe downloaded or curl output directly into `python3`,
 `bash`, or another interpreter.
 
-## Workflow
+## Operating Style
 
-1. Restate the safe objective in one sentence.
-2. Extract: target site URL, campaign topic, allowed recipient(s), fields to collect, and whether review-only or final SMTP is requested.
-3. Verify the recipient list is explicit and trusted. If not, ask for clarification.
-4. Inspect the reference site for public design cues: logo words, colors, layout, tone, and useful images. Do not hardcode one company; adapt to the provided URL.
-5. Draft:
-   - email subject
-   - email HTML
-   - landing page HTML
-   - campaign name
-   - safe training rationale
-   - optional image objective for the `comfyui-z-image` skill
-6. Create or reuse GoPhish objects in this order:
-   - group
-   - landing page
-   - email template
-   - sending profile
-   - campaign
-7. Use the `Mailpit Review SMTP` GoPhish sending profile for review sends. It delivers to Mailpit at `127.0.0.1:1025`; the user can inspect messages in the Workbench `Mailpit` app.
-8. Report the created object names/IDs, recipient(s), review status, and the exact next approval step.
+Work naturally. The user usually wants a working review campaign, not a long
+plan. Build the smallest complete campaign that satisfies the request, then
+report what was created and what needs approval.
+
+Use this loose flow:
+
+1. Identify the reference site, topic, allowed recipient(s), and safe form fields.
+2. If a trusted recipient is missing, ask for it. Otherwise continue.
+3. Use public design cues from the provided site URL. Do not hardcode any company.
+4. Create or reuse the GoPhish group, landing page, template, Mailpit SMTP profile, and campaign.
+5. Send review traffic to Mailpit first. Only use real SMTP after explicit approval.
+6. If a local service is down, say which Workbench app must be started and stop there.
+
+For visuals, use ComfyUI when it will improve the campaign, but do not block the
+whole campaign if image generation is unavailable. In that case, create clean
+HTML/CSS without generated imagery and explain the limitation.
 
 ## GoPhish API Shape
 
@@ -145,7 +146,7 @@ Minimal campaign:
 - If using generated visuals, use the `comfyui-z-image` skill and its visual review gate.
 - Image prompts must say: "No text, no letters, no words, no numbers, no logo text, no signage, no captions in the image."
 - Never embed generated visuals until they pass visual review for objective match, no visible text, and no AI slop.
-- After launching the review campaign, check Mailpit with `GET $MAILPIT_API_URL/messages` and report whether a message arrived.
+- After launching the review campaign, check Mailpit with `iphishctl mailpit messages` and report whether a message arrived.
 
 ## Final Response Format
 

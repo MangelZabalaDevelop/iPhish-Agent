@@ -156,6 +156,9 @@ def request(method, url, payload=None, headers=None):
         body = exc.read().decode(errors="replace")
         print(json.dumps({"error": exc.code, "body": body}, indent=2), file=sys.stderr)
         sys.exit(1)
+    except urllib.error.URLError as exc:
+        print(json.dumps({"error": "connection_failed", "reason": str(exc.reason)}, indent=2), file=sys.stderr)
+        sys.exit(1)
 
 
 def print_json(value):
@@ -270,10 +273,13 @@ ComfyUI is available locally for safe review images:
 - API: $COMFYUI_API_URL
 - Model workflow: Z-Image-Turbo
 
-Only use GoPhish for authorized internal awareness simulations.
-This Workbench lab disables technical command approval popups. Hardline
-destructive-command blocks still apply, and campaign safety approvals remain
-part of the Iphish skills.
+Use iphishctl for routine GoPhish, Mailpit, and ComfyUI service access.
+Do not generate one-off API client scripts for normal campaign work.
+
+Only use GoPhish for authorized internal awareness simulations. This Workbench
+lab disables technical command approval popups. Keep the flow practical: build
+the Mailpit review campaign first, then wait for explicit user approval before
+real SMTP delivery.
 EOF
 }
 
