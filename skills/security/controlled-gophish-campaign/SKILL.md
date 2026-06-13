@@ -60,6 +60,7 @@ iphishctl gophish GET /campaigns/
 iphishctl mailpit info
 iphishctl mailpit messages
 iphishctl comfy status
+iphishctl asset-url /opt/data/generated-images/example.png
 iphishctl review CAMPAIGN_ID
 ```
 
@@ -123,6 +124,18 @@ visuals, graphics, hero images, illustrations, or image assets for the campaign.
 If the user only asks to use a site's design, logos, colors, brand, visual
 style, or content as reference, use those cues in HTML/CSS and copy; do not
 generate images unless the prompt specifically requests them.
+
+When the user explicitly requests images, use the `comfyui-z-image` skill to
+generate PNG files, then run `iphishctl asset-url IMAGE_PATH` for each accepted
+image. Use the returned Workbench URL in GoPhish HTML, for example:
+
+```html
+<img src="http://localhost:10000/projects/iphish-agent/applications/GoPhish/assets/iphish-z-image_00001_.png" alt="Campaign visual">
+```
+
+Do not replace requested generated images with procedural SVGs, emoji art,
+base64 placeholder drawings, or decorative CSS-only illustrations. If image
+generation fails, report that limitation instead of faking generated images.
 
 ## GoPhish API Shape
 
@@ -194,6 +207,9 @@ misleading links. Use `GOPHISH_PUBLIC_URL` as the campaign URL.
   skill and its visual review gate.
 - Do not use ComfyUI merely because the user mentioned a site's design, logos,
   colors, brand, or visual style.
+- For accepted generated images, embed the `iphishctl asset-url` URL as normal
+  PNG `<img>` sources. Do not embed large base64 data URIs in GoPhish unless
+  explicitly asked.
 - Image prompts must say: "No text, no letters, no words, no numbers, no logo text, no signage, no captions in the image."
 - Never embed generated visuals until they pass visual review for objective match, no visible text, and no AI slop.
 - After launching the review campaign, use `iphishctl review CAMPAIGN_ID`; report only the user-facing Workbench URLs from that output. Do not report internal `127.0.0.1:8025` Mailpit URLs or a landing URL without `?rid=...`.

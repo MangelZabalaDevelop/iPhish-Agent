@@ -76,6 +76,16 @@ The helper:
 3. Runs a vision review through the configured OpenAI-compatible model when available.
 4. Prints JSON with `image_path`, `seed`, and `vision_review`.
 
+After accepting an image, convert its local path to a Workbench URL:
+
+```bash
+iphishctl asset-url /opt/data/generated-images/iphish-z-image_00001_.png
+```
+
+Use that returned URL as a normal PNG `<img src="...">` in GoPhish email or
+landing page HTML. Do not substitute generated images with procedural SVGs,
+emoji art, base64 placeholder drawings, or decorative CSS-only illustrations.
+
 ## Visual Review Gate
 
 Use the image only if the review says it passes and:
@@ -95,6 +105,7 @@ Report:
 ```text
 Image status:
 Image path:
+GoPhish asset URL:
 Visual review:
 Used in campaign:
 Next step:

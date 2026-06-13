@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import os
 import sys
+import mimetypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.client import HTTPConnection
-from urllib.parse import urlsplit
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 
 UPSTREAM_HOST = os.environ.get("GOPHISH_UPSTREAM_HOST", "127.0.0.1")
@@ -11,6 +13,8 @@ UPSTREAM_PORT = int(os.environ.get("GOPHISH_UPSTREAM_PORT", "3333"))
 PHISH_UPSTREAM_PORT = int(os.environ.get("GOPHISH_PHISH_UPSTREAM_PORT", "8080"))
 PROXY_PREFIX = os.environ.get("PROXY_PREFIX", "/projects/iphish-agent/applications/GoPhish").rstrip("/")
 LANDING_PREFIX = PROXY_PREFIX + "/landing"
+ASSET_PREFIX = PROXY_PREFIX + "/assets"
+ASSET_ROOT = Path(os.environ.get("GOPHISH_ASSET_ROOT", "/project/data/hermes/generated-images")).resolve()
 LISTEN_HOST = os.environ.get("GOPHISH_PROXY_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.environ.get("GOPHISH_PROXY_PORT", "3334"))
 
@@ -61,6 +65,32 @@ class GoPhishProxy(BaseHTTPRequestHandler):
             text = text.replace(old, new)
         return text.encode("utf-8")
 
+    def serve_asset(self, include_body=True):
+        path = urlsplit(self.path).path
+        if path == ASSET_PREFIX:
+            self.send_error(404)
+            return
+        rel = unquote(path[len(ASSET_PREFIX):]).lstrip("/")
+        target = (ASSET_ROOT / rel).resolve()
+        try:
+            target.relative_to(ASSET_ROOT)
+        except ValueError:
+            self.send_error(403)
+            return
+        if not target.is_file():
+            self.send_error(404)
+            return
+        content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+        data = target.read_bytes() if include_body else b""
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(target.stat().st_size))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        if include_body:
+            self.wfile.write(data)
+
     def proxy(self, include_body=True):
         body = None
         if "Content-Length" in self.headers:
@@ -96,9 +126,15 @@ class GoPhishProxy(BaseHTTPRequestHandler):
             conn.close()
 
     def do_HEAD(self):
+        if urlsplit(self.path).path.startswith(ASSET_PREFIX + "/"):
+            self.serve_asset(include_body=False)
+            return
         self.proxy(include_body=False)
 
     def do_GET(self):
+        if urlsplit(self.path).path.startswith(ASSET_PREFIX + "/"):
+            self.serve_asset()
+            return
         self.proxy()
 
     def do_POST(self):

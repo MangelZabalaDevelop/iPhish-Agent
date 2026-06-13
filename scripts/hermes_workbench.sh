@@ -29,6 +29,8 @@ GOPHISH_ADMIN_URL="${GOPHISH_ADMIN_URL:-http://127.0.0.1:3333}"
 GOPHISH_API_URL="${GOPHISH_API_URL:-http://127.0.0.1:3333/api}"
 WORKBENCH_APP_BASE_URL="${WORKBENCH_APP_BASE_URL:-http://localhost:10000/projects/iphish-agent/applications}"
 GOPHISH_PUBLIC_URL="${GOPHISH_PUBLIC_URL:-${WORKBENCH_APP_BASE_URL}/GoPhish/landing}"
+GOPHISH_ASSET_PUBLIC_URL="${GOPHISH_ASSET_PUBLIC_URL:-${WORKBENCH_APP_BASE_URL}/GoPhish/assets}"
+GOPHISH_ASSET_ROOT="${GOPHISH_ASSET_ROOT:-$STATE_DIR/generated-images}"
 GOPHISH_PROXY_PORT="${GOPHISH_PROXY_PORT:-3334}"
 MAILPIT_WEBROOT="${MAILPIT_WEBROOT:-/projects/iphish-agent/applications/Mailpit}"
 MAILPIT_WEB_URL="${MAILPIT_WEB_URL:-http://127.0.0.1:8025${MAILPIT_WEBROOT}}"
@@ -109,6 +111,7 @@ GOPHISH_REVIEW_SMTP_NAME=$GOPHISH_REVIEW_SMTP_NAME
 COMFYUI_WEB_URL=$COMFYUI_WEB_URL
 COMFYUI_API_URL=$COMFYUI_API_URL
 COMFYUI_DIRECT_URL=$COMFYUI_DIRECT_URL
+GOPHISH_ASSET_PUBLIC_URL=$GOPHISH_ASSET_PUBLIC_URL
 EOF
   chmod 600 "$STATE_DIR/.env" 2>/dev/null || true
   mkdir -p "$STATE_DIR/.local/bin"
@@ -117,6 +120,7 @@ EOF
 import json
 import os
 import sys
+import urllib.parse
 import urllib.error
 import urllib.request
 
@@ -127,6 +131,7 @@ def usage():
         "  iphishctl gophish METHOD /path [json-file|-]\n"
         "  iphishctl mailpit info|messages|message ID\n"
         "  iphishctl comfy status|queue|prompt json-file|-\n",
+        "  iphishctl asset-url IMAGE_PATH_OR_FILENAME\n",
         "  iphishctl review CAMPAIGN_ID [--json]\n",
         file=sys.stderr,
     )
@@ -224,6 +229,21 @@ def comfy(args):
     return 0
 
 
+def asset_url(args):
+    if len(args) != 1:
+        return usage()
+    value = args[0]
+    name = os.path.basename(value)
+    if not name:
+        return usage()
+    public_base = os.environ.get(
+        "GOPHISH_ASSET_PUBLIC_URL",
+        "http://localhost:10000/projects/iphish-agent/applications/GoPhish/assets",
+    ).rstrip("/")
+    print(public_base + "/" + urllib.parse.quote(name))
+    return 0
+
+
 def review(args):
     if len(args) not in {1, 2}:
         return usage()
@@ -297,6 +317,8 @@ def main():
         return mailpit(args)
     if service == "comfy":
         return comfy(args)
+    if service == "asset-url":
+        return asset_url(args)
     if service == "review":
         return review(args)
     return usage()
@@ -334,6 +356,7 @@ GoPhish is available locally for authorized security-awareness lab work:
 - Admin/API base: $GOPHISH_ADMIN_URL
 - API URL: $GOPHISH_API_URL
 - Public landing base: $GOPHISH_PUBLIC_URL
+- Generated image asset base: $GOPHISH_ASSET_PUBLIC_URL
 - API key: read GOPHISH_API_KEY from the environment; do not print it unless explicitly asked.
 
 Mailpit is available locally for review-only email previews:
@@ -355,6 +378,11 @@ graphics, hero images, illustrations, or image assets for the campaign. If the
 user only asks for design, logos, colors, brand, visual style, or content as
 reference, use those cues in HTML/CSS and copy; do not generate images unless
 the prompt specifically requests them.
+
+When you generate images with comfyui-z-image, use iphishctl asset-url
+IMAGE_PATH to turn each generated PNG path into a Workbench URL. Embed those PNG
+URLs in GoPhish HTML with <img src="...">. Do not replace generated images with
+procedural SVGs, emoji art, or base64 placeholder drawings.
 
 Use iphishctl for routine GoPhish, Mailpit, and ComfyUI service access.
 Do not generate one-off API client scripts for normal campaign work.
@@ -713,7 +741,8 @@ start_gophish_proxy() {
     printf '=== starting GoPhish Workbench proxy at %s ===\n' "$(date -Is)"
     printf 'port=%s prefix=%s\n' "$GOPHISH_PROXY_PORT" "${PROXY_PREFIX:-/projects/iphish-agent/applications/GoPhish}"
   } >"$GOPHISH_PROXY_LOG_FILE"
-  nohup python3 "$PROJECT_DIR/scripts/gophish_workbench_proxy.py" >>"$GOPHISH_PROXY_LOG_FILE" 2>&1 </dev/null &
+  GOPHISH_ASSET_ROOT="$GOPHISH_ASSET_ROOT" \
+    nohup python3 "$PROJECT_DIR/scripts/gophish_workbench_proxy.py" >>"$GOPHISH_PROXY_LOG_FILE" 2>&1 </dev/null &
   echo "$!" >"$GOPHISH_PROXY_PID_FILE"
   local i
   for i in $(seq 1 30); do

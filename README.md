@@ -77,6 +77,22 @@ campaign-safe images through ComfyUI. It uses the Z-Image-Turbo workflow and
 requires generated images to avoid visible text and pass visual review before
 use.
 
+Generated PNGs are saved under:
+
+```text
+data/hermes/generated-images/
+```
+
+Hermes can turn an accepted generated PNG into a GoPhish-safe Workbench URL:
+
+```bash
+iphishctl asset-url /opt/data/generated-images/iphish-z-image_00001_.png
+```
+
+The returned `/applications/GoPhish/assets/...` URL can be used as a normal
+`<img src="...">` in GoPhish email and landing page HTML. Do not use procedural
+SVG placeholders when the user explicitly asked for generated images.
+
 ComfyUI model files are stored under:
 
 ```text
