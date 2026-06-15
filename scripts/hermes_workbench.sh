@@ -344,6 +344,18 @@ approvals:
   mcp_reload_confirm: true
   destructive_slash_confirm: true
 EOF
+  if printf '%s' "$MODEL" | grep -qi 'deepseek'; then
+    cat >>"$STATE_DIR/config.yaml" <<EOF
+custom_providers:
+  - name: local-vllm-deepseek
+    provider: custom
+    model: "$MODEL"
+    base_url: "$base_url"
+    extra_body:
+      chat_template_kwargs:
+        thinking: false
+EOF
+  fi
 
   cat >"$STATE_DIR/SOUL.md" <<EOF
 # Iphish Agent
