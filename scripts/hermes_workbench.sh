@@ -44,7 +44,14 @@ COMFYUI_WEBROOT="${COMFYUI_WEBROOT:-/projects/iphish-agent/applications/ComfyUI}
 COMFYUI_WEB_URL="${COMFYUI_WEB_URL:-http://127.0.0.1:8188${COMFYUI_WEBROOT}}"
 COMFYUI_API_URL="${COMFYUI_API_URL:-$COMFYUI_WEB_URL}"
 COMFYUI_DIRECT_URL="${COMFYUI_DIRECT_URL:-http://127.0.0.1:8188}"
-DOCKER_HOST="${DOCKER_HOST:-unix:///host-run/docker.sock}"
+PROJECT_CONTAINER_NAME="${PROJECT_CONTAINER_NAME:-project-iphish-agent}"
+if [[ -z "${DOCKER_HOST:-}" ]]; then
+  if [[ -S /host-run/docker.sock ]]; then
+    DOCKER_HOST="unix:///host-run/docker.sock"
+  else
+    DOCKER_HOST="unix:///var/run/docker.sock"
+  fi
+fi
 export DOCKER_HOST
 
 normalize_base_url() {
@@ -61,7 +68,19 @@ project_host_dir() {
     printf '%s\n' "$PROJECT_HOST_DIR"
     return
   fi
-  docker inspect -f '{{range .Mounts}}{{if eq .Destination "/project"}}{{.Source}}{{end}}{{end}}' "$HOSTNAME"
+  local target="$HOSTNAME"
+  if docker inspect "$PROJECT_CONTAINER_NAME" >/dev/null 2>&1; then
+    target="$PROJECT_CONTAINER_NAME"
+  fi
+  docker inspect -f '{{range .Mounts}}{{if eq .Destination "/project"}}{{.Source}}{{end}}{{end}}' "$target"
+}
+
+network_container() {
+  if docker inspect "$PROJECT_CONTAINER_NAME" >/dev/null 2>&1; then
+    printf '%s\n' "$PROJECT_CONTAINER_NAME"
+  else
+    printf '%s\n' "$HOSTNAME"
+  fi
 }
 
 repair_state_permissions() {
@@ -130,6 +149,7 @@ def usage():
     print(
         "Usage:\n"
         "  iphishctl gophish METHOD /path [json-file|-]\n"
+        "  iphishctl gophish-list campaigns|groups|pages|templates|smtp [limit]\n"
         "  iphishctl mailpit info|messages|message ID\n"
         "  iphishctl comfy status|queue|prompt json-file|-\n",
         "  iphishctl asset-url IMAGE_PATH_OR_FILENAME\n",
@@ -177,6 +197,53 @@ def print_json(value):
         print(json.dumps(value, indent=2, ensure_ascii=False))
     except BrokenPipeError:
         sys.exit(0)
+
+
+def summarize_campaign(item):
+    return {
+        "id": item.get("id"),
+        "name": item.get("name"),
+        "status": item.get("status"),
+        "url": item.get("url"),
+        "created_date": item.get("created_date"),
+        "template": (item.get("template") or {}).get("name"),
+        "page": (item.get("page") or {}).get("name"),
+        "smtp": (item.get("smtp") or {}).get("name"),
+        "groups": [g.get("name") for g in item.get("groups", []) if isinstance(g, dict)],
+    }
+
+
+def summarize_named(item):
+    return {
+        "id": item.get("id"),
+        "name": item.get("name"),
+        "modified_date": item.get("modified_date"),
+    }
+
+
+def gophish_list(args):
+    if not args or args[0] not in {"campaigns", "groups", "pages", "templates", "smtp"}:
+        return usage()
+    resource = args[0]
+    limit = 10
+    if len(args) > 1:
+        try:
+            limit = max(1, min(50, int(args[1])))
+        except ValueError:
+            return usage()
+    base = os.environ.get("GOPHISH_API_URL", "http://127.0.0.1:3333/api").rstrip("/")
+    key = os.environ.get("GOPHISH_API_KEY", "local-gophish-api-key-change-me")
+    endpoint = "campaigns" if resource == "campaigns" else resource
+    items = request("GET", f"{base}/{endpoint}/", headers={"Authorization": f"Bearer {key}"})
+    if not isinstance(items, list):
+        print_json(items)
+        return 0
+    items = items[:limit]
+    if resource == "campaigns":
+        print_json([summarize_campaign(item) for item in items])
+    else:
+        print_json([summarize_named(item) for item in items])
+    return 0
 
 
 def gophish(args):
@@ -314,6 +381,8 @@ def main():
     service, args = sys.argv[1], sys.argv[2:]
     if service == "gophish":
         return gophish(args)
+    if service == "gophish-list":
+        return gophish_list(args)
     if service == "mailpit":
         return mailpit(args)
     if service == "comfy":
@@ -421,6 +490,8 @@ wait_for_mailpit() {
 }
 
 start_mailpit() {
+  local network_target
+  network_target="$(network_container)"
   {
     printf '=== starting Mailpit at %s ===\n' "$(date -Is)"
     printf 'image=%s container=%s web=%s smtp=%s:%s\n' "$MAILPIT_IMAGE" "$MAILPIT_CONTAINER_NAME" "$MAILPIT_WEB_URL" "$MAILPIT_SMTP_HOST" "$MAILPIT_SMTP_PORT"
@@ -432,7 +503,7 @@ start_mailpit() {
     --name "$MAILPIT_CONTAINER_NAME" \
     --restart unless-stopped \
     --no-healthcheck \
-    --network "container:$HOSTNAME" \
+    --network "container:$network_target" \
     "$MAILPIT_IMAGE" \
     --webroot "$MAILPIT_WEBROOT" >>"$LOG_FILE" 2>&1
   wait_for_mailpit
@@ -526,7 +597,9 @@ PY
 
 start_comfyui() {
   local host_project
+  local network_target
   host_project="$(project_host_dir)"
+  network_target="$(network_container)"
   mkdir -p "$PROJECT_DIR/data/comfyui/models" \
     "$PROJECT_DIR/data/comfyui/input" \
     "$PROJECT_DIR/data/comfyui/output" \
@@ -545,7 +618,7 @@ start_comfyui() {
     --restart unless-stopped \
     --gpus all \
     --ipc=host \
-    --network "container:$HOSTNAME" \
+    --network "container:$network_target" \
     -v "$host_project/data/comfyui/models:/opt/ComfyUI/models" \
     -v "$host_project/data/comfyui/input:/opt/ComfyUI/input" \
     -v "$host_project/data/comfyui/output:/opt/ComfyUI/output" \
@@ -701,7 +774,9 @@ PY
 
 start_gophish() {
   local host_project
+  local network_target
   host_project="$(project_host_dir)"
+  network_target="$(network_container)"
   start_mailpit
   prepare_gophish_state
   {
@@ -714,7 +789,7 @@ start_gophish() {
   docker run -d \
     --name "$GOPHISH_CONTAINER_NAME" \
     --restart unless-stopped \
-    --network "container:$HOSTNAME" \
+    --network "container:$network_target" \
     -v "$host_project/data/gophish:/opt/gophish/data" \
     -v "$host_project/data/gophish/config.json:/opt/gophish/config.json:ro" \
     "$GOPHISH_IMAGE" \
@@ -759,7 +834,9 @@ start_gophish_proxy() {
 
 start_container() {
   local host_project
+  local network_target
   host_project="$(project_host_dir)"
+  network_target="$(network_container)"
   prepare_state "$host_project"
   {
     printf '=== starting Hermes Iphish Agent at %s ===\n' "$(date -Is)"
@@ -776,7 +853,7 @@ start_container() {
   docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
-    --network "container:$HOSTNAME" \
+    --network "container:$network_target" \
     -e HERMES_DASHBOARD=0 \
     -e HERMES_UID="$(id -u)" \
     -e HERMES_GID="$(id -g)" \

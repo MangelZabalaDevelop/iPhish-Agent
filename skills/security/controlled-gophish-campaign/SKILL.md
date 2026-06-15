@@ -56,13 +56,21 @@ Use the bundled `iphishctl` helper for service access. Prefer this helper over
 ad hoc Python files or raw curl commands.
 
 ```bash
-iphishctl gophish GET /campaigns/
+iphishctl gophish-list campaigns 10
+iphishctl gophish-list groups
+iphishctl gophish-list pages
+iphishctl gophish-list templates
+iphishctl gophish-list smtp
 iphishctl mailpit info
 iphishctl mailpit messages
 iphishctl comfy status
 iphishctl asset-url /opt/data/generated-images/example.png
 iphishctl review CAMPAIGN_ID
 ```
+
+Use `iphishctl gophish-list ...` for discovery. It returns compact summaries
+without full HTML, images, or campaign timelines. Do not list full campaigns,
+pages, or templates unless you need one specific object by ID.
 
 For create/update operations, write the JSON body to a temporary `.json` file
 and pass it to `iphishctl`, for example:
@@ -139,14 +147,18 @@ generation fails, report that limitation instead of faking generated images.
 
 ## GoPhish API Shape
 
-Use JSON with these endpoints:
+When using `iphishctl gophish`, pass paths relative to `GOPHISH_API_URL`.
+Because `GOPHISH_API_URL` already ends in `/api`, do not include `/api` in the
+path. For example, use `/campaigns/`, not `/api/campaigns/`.
+
+Use JSON with these helper paths:
 
 ```text
-GET/POST /api/groups/
-GET/POST /api/pages/
-GET/POST /api/templates/
-GET/POST /api/smtp/
-GET/POST /api/campaigns/
+GET/POST /groups/
+GET/POST /pages/
+GET/POST /templates/
+GET/POST /smtp/
+GET/POST /campaigns/
 ```
 
 Minimal group:
