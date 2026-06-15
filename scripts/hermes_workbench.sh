@@ -742,6 +742,7 @@ start_gophish_proxy() {
     printf 'port=%s prefix=%s\n' "$GOPHISH_PROXY_PORT" "${PROXY_PREFIX:-/projects/iphish-agent/applications/GoPhish}"
   } >"$GOPHISH_PROXY_LOG_FILE"
   GOPHISH_ASSET_ROOT="$GOPHISH_ASSET_ROOT" \
+    GOPHISH_API_KEY="$GOPHISH_API_KEY" \
     nohup python3 "$PROJECT_DIR/scripts/gophish_workbench_proxy.py" >>"$GOPHISH_PROXY_LOG_FILE" 2>&1 </dev/null &
   echo "$!" >"$GOPHISH_PROXY_PID_FILE"
   local i
