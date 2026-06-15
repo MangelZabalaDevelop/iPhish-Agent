@@ -53,17 +53,38 @@ class GoPhishProxy(BaseHTTPRequestHandler):
         return value
 
     def rewrite_body(self, body, content_type, prefix):
-        if not content_type.startswith("text/html"):
+        is_html = content_type.startswith("text/html")
+        is_javascript = "javascript" in content_type
+        if not is_html and not is_javascript:
             return body
         text = body.decode("utf-8", errors="replace")
-        replacements = {
-            'href="/': f'href="{prefix}/',
-            'src="/': f'src="{prefix}/',
-            'action="/': f'action="{prefix}/',
-            'url(/': f'url({prefix}/',
-        }
-        for old, new in replacements.items():
-            text = text.replace(old, new)
+        if is_html:
+            replacements = {
+                'href="/': f'href="{prefix}/',
+                'src="/': f'src="{prefix}/',
+                'action="/': f'action="{prefix}/',
+                'url(/': f'url({prefix}/',
+            }
+            for old, new in replacements.items():
+                text = text.replace(old, new)
+
+        root_paths = (
+            "api",
+            "campaigns",
+            "groups",
+            "templates",
+            "landing_pages",
+            "sending_profiles",
+            "settings",
+            "users",
+            "webhooks",
+            "login",
+            "logout",
+            "impersonate",
+        )
+        for root_path in root_paths:
+            text = text.replace(f'"/{root_path}', f'"{prefix}/{root_path}')
+            text = text.replace(f"'/{root_path}", f"'{prefix}/{root_path}")
         return text.encode("utf-8")
 
     def serve_asset(self, include_body=True):
@@ -110,6 +131,7 @@ class GoPhishProxy(BaseHTTPRequestHandler):
             resp = conn.getresponse()
             data = resp.read()
             content_type = resp.getheader("Content-Type", "")
+            no_store = content_type.startswith("text/html") or "javascript" in content_type
             data = self.rewrite_body(data, content_type, prefix)
 
             self.send_response(resp.status, resp.reason)
@@ -117,9 +139,13 @@ class GoPhishProxy(BaseHTTPRequestHandler):
                 lower = key.lower()
                 if lower in {"content-length", "connection", "transfer-encoding"}:
                     continue
+                if no_store and lower == "cache-control":
+                    continue
                 if lower == "location":
                     value = self.rewrite_location(value, prefix)
                 self.send_header(key, value)
+            if no_store:
+                self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Connection", "close")
             self.end_headers()
