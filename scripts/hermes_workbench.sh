@@ -21,6 +21,7 @@ COMFYUI_IMAGE="${COMFYUI_IMAGE:-xpectra/comfyui-workbench:latest}"
 MODEL="${HERMES_MODEL:-Qwen3.6-35B-A3B-NVFP4}"
 BASE_URL="${HERMES_BASE_URL:-http://192.168.0.8:9494}"
 API_KEY="${HERMES_API_KEY:-local-external-vllm-placeholder}"
+MAX_TOKENS="${HERMES_MAX_TOKENS:-16384}"
 API_SERVER_KEY="${HERMES_API_SERVER_KEY:-local-hermes-agent}"
 TTYD_PORT="${HERMES_TUI_PORT:-9119}"
 GOPHISH_API_KEY="${GOPHISH_API_KEY:-local-gophish-api-key-change-me}"
@@ -337,6 +338,7 @@ model:
   base_url: "$base_url"
   api_key: "$API_KEY"
   api_mode: chat_completions
+  max_tokens: $MAX_TOKENS
 approvals:
   mode: "off"
   timeout: 60
@@ -344,18 +346,6 @@ approvals:
   mcp_reload_confirm: true
   destructive_slash_confirm: true
 EOF
-  if printf '%s' "$MODEL" | grep -qi 'deepseek'; then
-    cat >>"$STATE_DIR/config.yaml" <<EOF
-custom_providers:
-  - name: local-vllm-deepseek
-    provider: custom
-    model: "$MODEL"
-    base_url: "$base_url"
-    extra_body:
-      chat_template_kwargs:
-        thinking: false
-EOF
-  fi
 
   cat >"$STATE_DIR/SOUL.md" <<EOF
 # Iphish Agent
