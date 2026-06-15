@@ -52,6 +52,25 @@ class GoPhishProxy(BaseHTTPRequestHandler):
             return prefix + value
         return value
 
+    def rewrite_set_cookie(self, value, prefix):
+        parts = [part.strip() for part in value.split(";")]
+        rewritten = []
+        saw_path = False
+        for part in parts:
+            if part.lower().startswith("path="):
+                rewritten.append(f"Path={prefix}")
+                saw_path = True
+            else:
+                rewritten.append(part)
+        if not saw_path:
+            rewritten.append(f"Path={prefix}")
+        return "; ".join(rewritten)
+
+    def send_legacy_cookie_clear_headers(self):
+        expires = "Thu, 01 Jan 1970 00:00:00 GMT"
+        for name in ("gophish", "_gorilla_csrf"):
+            self.send_header("Set-Cookie", f"{name}=; Path=/; Expires={expires}; Max-Age=0; HttpOnly")
+
     def rewrite_body(self, body, content_type, prefix):
         is_html = content_type.startswith("text/html")
         is_javascript = "javascript" in content_type
@@ -143,9 +162,13 @@ class GoPhishProxy(BaseHTTPRequestHandler):
                     continue
                 if lower == "location":
                     value = self.rewrite_location(value, prefix)
+                elif lower == "set-cookie":
+                    value = self.rewrite_set_cookie(value, prefix)
                 self.send_header(key, value)
             if no_store:
                 self.send_header("Cache-Control", "no-store")
+            if prefix == PROXY_PREFIX:
+                self.send_legacy_cookie_clear_headers()
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Connection", "close")
             self.end_headers()

@@ -99,7 +99,7 @@ execution:
             port: "3334"
             proxy:
                 trim_prefix: false
-            url_command: bash -lc 'echo http://127.0.0.1:3334/projects/iphish-agent/applications/GoPhish/login'
+            url_command: bash -lc 'echo http://127.0.0.1:3334/projects/iphish-agent/applications/GoPhish/'
         - name: Mailpit
           type: custom
           class: webapp
