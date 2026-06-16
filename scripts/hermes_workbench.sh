@@ -3,6 +3,12 @@ set -euo pipefail
 
 ACTION="${1:-status}"
 PROJECT_DIR="${PROJECT_DIR:-/project}"
+if [[ -f "$PROJECT_DIR/variables.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$PROJECT_DIR/variables.env"
+  set +a
+fi
 LOG_FILE="${LOG_FILE:-$PROJECT_DIR/logs/iphish-agent.log}"
 TTYD_LOG_FILE="${TTYD_LOG_FILE:-$PROJECT_DIR/logs/iphish-agent-tui.log}"
 TTYD_PID_FILE="${TTYD_PID_FILE:-/tmp/iphish-agent-ttyd.pid}"
@@ -832,6 +838,17 @@ start_gophish_proxy() {
   return 1
 }
 
+wait_for_hermes_api() {
+  local i
+  for i in $(seq 1 90); do
+    if curl -fsS --max-time 2 http://127.0.0.1:8642/health >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 start_container() {
   local host_project
   local network_target
@@ -890,6 +907,7 @@ start_container() {
     "$IMAGE" gateway run >>"$LOG_FILE" 2>&1
 
   nohup docker logs --timestamps --follow "$CONTAINER_NAME" >>"$LOG_FILE" 2>&1 </dev/null &
+  wait_for_hermes_api
   start_tui
 }
 
@@ -935,7 +953,6 @@ health() {
 case "$ACTION" in
   start)
     start_container
-    start_tui
     ;;
   start-gophish)
     start_gophish
