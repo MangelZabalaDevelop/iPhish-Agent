@@ -163,6 +163,60 @@ service_curl() {
   return 1
 }
 
+publish_workbench_app_routes() {
+  local config_dir
+  config_dir="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/configs"}}{{.Source}}{{end}}{{end}}' workbench-proxy 2>/dev/null || true)"
+  if [[ -z "$config_dir" ]]; then
+    return 0
+  fi
+
+  local host_project
+  local route_dir
+  local route_host_dir
+  host_project="$(project_host_dir)"
+  route_dir="$PROJECT_DIR/data/scratch/workbench-routes"
+  route_host_dir="$host_project/data/scratch/workbench-routes"
+  mkdir -p "$route_dir"
+
+  cat >"$route_dir/iphish-agent_GoPhish.yaml" <<'EOF'
+http:
+    services:
+        iphish-agent-GoPhish:
+            loadBalancer:
+                servers:
+                    - url: http://project-iphish-agent:3334
+    routers:
+        /projects/iphish-agent/applications/GoPhish:
+            rule: PathPrefix(`/projects/iphish-agent/applications/GoPhish`) && Host(`localhost`)
+            service: iphish-agent-GoPhish
+EOF
+
+  cat >"$route_dir/iphish-agent_Mailpit.yaml" <<'EOF'
+http:
+    services:
+        iphish-agent-Mailpit:
+            loadBalancer:
+                servers:
+                    - url: http://project-iphish-agent:8025
+    routers:
+        /projects/iphish-agent/applications/Mailpit:
+            rule: PathPrefix(`/projects/iphish-agent/applications/Mailpit`) && Host(`localhost`)
+            service: iphish-agent-Mailpit
+EOF
+
+  if mkdir -p "$config_dir" 2>/dev/null && cp "$route_dir"/*.yaml "$config_dir"/ 2>/dev/null; then
+    touch "$config_dir/updatenow" 2>/dev/null || true
+    return 0
+  fi
+
+  docker run --rm \
+    --entrypoint sh \
+    -v "$route_host_dir:/source:ro" \
+    -v "$config_dir:/configs" \
+    "$IMAGE" \
+    -lc 'cp /source/*.yaml /configs/ && touch /configs/updatenow' >/dev/null
+}
+
 repair_state_permissions() {
   local host_project="$1"
   if mkdir -p "$STATE_DIR" && touch "$STATE_DIR/.write-test" 2>/dev/null; then
@@ -980,6 +1034,7 @@ start_container() {
 
   start_gophish
   start_gophish_proxy
+  publish_workbench_app_routes
 
   if docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
     docker rm -f "$CONTAINER_NAME" >>"$LOG_FILE" 2>&1 || true
@@ -1079,9 +1134,11 @@ case "$ACTION" in
   start-gophish)
     start_gophish
     start_gophish_proxy
+    publish_workbench_app_routes
     ;;
   start-gophish-proxy)
     start_gophish_proxy
+    publish_workbench_app_routes
     ;;
   start-mailpit)
     start_mailpit
