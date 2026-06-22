@@ -3,7 +3,7 @@ specMinorVersion: 2
 meta:
     name: iphish-agent
     image: project-iphish-agent
-    description: Clean Hermes-based Iphish Agent connected to local vLLM
+    description: Hermes-powered local AI agent on Dell Pro GB10, built to sharpen enterprise phishing defense safely.
     labels: []
     createdOn: "2026-06-11T14:07:50Z"
     defaultBranch: main
@@ -68,34 +68,34 @@ environment:
     compose_file_path: ""
 execution:
     apps:
-        - name: Iphish Agent
+        - name: Iphish
           type: custom
           class: webapp
           start_command: bash -lc '/project/scripts/hermes_workbench.sh start'
           health_check_command: bash -lc '/project/scripts/hermes_workbench.sh health'
           stop_command: bash -lc '/project/scripts/hermes_workbench.sh stop'
-          user_msg: Use the Open Iphish Agent button.
+          user_msg: "Iphish is ready: {{URL}}"
           logfile_path: /project/logs/iphish-agent.log
-          timeout_seconds: 180
+          timeout_seconds: 600
           icon_url: ""
           webapp_options:
-            autolaunch: false
-            port: "9119"
+            autolaunch: true
+            port: "9120"
             proxy:
                 trim_prefix: true
-            url_command: bash -lc 'echo http://127.0.0.1:9119'
+            url_command: bash -lc 'echo http://127.0.0.1:9120/'
         - name: GoPhish
           type: custom
           class: webapp
           start_command: bash -lc '/project/scripts/hermes_workbench.sh start-gophish'
           health_check_command: bash -lc '/project/scripts/hermes_workbench.sh gophish-health'
           stop_command: bash -lc '/project/scripts/hermes_workbench.sh stop-gophish'
-          user_msg: Use the Open GoPhish button.
+          user_msg: "GoPhish is ready: {{URL}}"
           logfile_path: /project/logs/iphish-agent.log
           timeout_seconds: 120
           icon_url: ""
           webapp_options:
-            autolaunch: false
+            autolaunch: true
             port: "3334"
             proxy:
                 trim_prefix: false
@@ -106,12 +106,12 @@ execution:
           start_command: bash -lc '/project/scripts/hermes_workbench.sh start-mailpit'
           health_check_command: bash -lc '/project/scripts/hermes_workbench.sh mailpit-health'
           stop_command: bash -lc '/project/scripts/hermes_workbench.sh stop-mailpit'
-          user_msg: Use the Open Mailpit button.
+          user_msg: "Mailpit is ready: {{URL}}"
           logfile_path: /project/logs/iphish-agent.log
           timeout_seconds: 120
           icon_url: ""
           webapp_options:
-            autolaunch: false
+            autolaunch: true
             port: "8025"
             proxy:
                 trim_prefix: false
@@ -122,19 +122,19 @@ execution:
           start_command: bash -lc '/project/scripts/hermes_workbench.sh start-comfyui'
           health_check_command: bash -lc '/project/scripts/hermes_workbench.sh comfyui-health'
           stop_command: bash -lc '/project/scripts/hermes_workbench.sh stop-comfyui'
-          user_msg: Use the Open ComfyUI button.
+          user_msg: "ComfyUI is ready: {{URL}}"
           logfile_path: /project/logs/iphish-agent.log
           timeout_seconds: 2400
           icon_url: ""
           webapp_options:
-            autolaunch: false
+            autolaunch: true
             port: "8188"
             proxy:
                 trim_prefix: true
-            url_command: bash -lc 'echo http://127.0.0.1:8188/projects/iphish-agent/applications/ComfyUI/'
+            url_command: bash -lc 'echo http://127.0.0.1:8188/'
     resources:
         gpu:
-            requested: 0
+            requested: 1
         sharedMemoryMB: 0
     secrets: []
     mounts:

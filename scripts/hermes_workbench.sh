@@ -2,7 +2,15 @@
 set -euo pipefail
 
 ACTION="${1:-status}"
-PROJECT_DIR="${PROJECT_DIR:-/project}"
+if [[ -z "${PROJECT_DIR:-}" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  CANDIDATE_PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+  if [[ -f "$CANDIDATE_PROJECT_DIR/.project/spec.yaml" ]]; then
+    PROJECT_DIR="$CANDIDATE_PROJECT_DIR"
+  else
+    PROJECT_DIR="/project"
+  fi
+fi
 if [[ -f "$PROJECT_DIR/variables.env" ]]; then
   set -a
   # shellcheck disable=SC1091
@@ -12,6 +20,7 @@ fi
 LOG_FILE="${LOG_FILE:-$PROJECT_DIR/logs/iphish-agent.log}"
 TTYD_LOG_FILE="${TTYD_LOG_FILE:-$PROJECT_DIR/logs/iphish-agent-tui.log}"
 TTYD_PID_FILE="${TTYD_PID_FILE:-/tmp/iphish-agent-ttyd.pid}"
+HERMES_DASHBOARD_PORT="${HERMES_DASHBOARD_PORT:-9120}"
 GOPHISH_PROXY_LOG_FILE="${GOPHISH_PROXY_LOG_FILE:-$PROJECT_DIR/logs/gophish-workbench-proxy.log}"
 GOPHISH_PROXY_PID_FILE="${GOPHISH_PROXY_PID_FILE:-/tmp/iphish-agent-gophish-proxy.pid}"
 STATE_DIR="${STATE_DIR:-$PROJECT_DIR/data/hermes}"
@@ -20,6 +29,7 @@ CONTAINER_NAME="${HERMES_CONTAINER_NAME:-xpectra-iphish-agent}"
 IMAGE="${HERMES_IMAGE:-nousresearch/hermes-agent:latest}"
 GOPHISH_CONTAINER_NAME="${GOPHISH_CONTAINER_NAME:-xpectra-iphish-agent-gophish}"
 GOPHISH_IMAGE="${GOPHISH_IMAGE:-xpectra/gophish-arm64:v0.12.1}"
+GOPHISH_PROXY_CONTAINER_NAME="${GOPHISH_PROXY_CONTAINER_NAME:-xpectra-iphish-agent-gophish-proxy}"
 MAILPIT_CONTAINER_NAME="${MAILPIT_CONTAINER_NAME:-xpectra-iphish-agent-mailpit}"
 MAILPIT_IMAGE="${MAILPIT_IMAGE:-axllent/mailpit:latest}"
 COMFYUI_CONTAINER_NAME="${COMFYUI_CONTAINER_NAME:-xpectra-iphish-agent-comfyui}"
@@ -27,6 +37,7 @@ COMFYUI_IMAGE="${COMFYUI_IMAGE:-xpectra/comfyui-workbench:latest}"
 MODEL="${HERMES_MODEL:-Qwen3.6-35B-A3B-NVFP4}"
 BASE_URL="${HERMES_BASE_URL:-http://192.168.0.8:9494}"
 API_KEY="${HERMES_API_KEY:-local-external-vllm-placeholder}"
+CUSTOM_PROVIDER_NAME="${HERMES_CUSTOM_PROVIDER_NAME:-local-vllm}"
 MAX_TOKENS="${HERMES_MAX_TOKENS:-32768}"
 API_SERVER_KEY="${HERMES_API_SERVER_KEY:-local-hermes-agent}"
 TTYD_PORT="${HERMES_TUI_PORT:-9119}"
@@ -69,24 +80,87 @@ normalize_base_url() {
   printf '%s\n' "$value"
 }
 
+base_url_is_reachable() {
+  local value="$1"
+  curl -fsS --max-time 3 "${value%/}/models" >/dev/null 2>&1
+}
+
+resolve_llm_base_url() {
+  local configured
+  configured="$(normalize_base_url "$1")"
+  if base_url_is_reachable "$configured"; then
+    printf '%s\n' "$configured"
+    return
+  fi
+
+  local candidate
+  for candidate in ${HERMES_BASE_URL_CANDIDATES:-} \
+    http://10.100.88.2:9494 \
+    http://10.100.89.2:9494 \
+    http://127.0.0.1:9494 \
+    http://192.168.0.8:9494; do
+    candidate="$(normalize_base_url "$candidate")"
+    if base_url_is_reachable "$candidate"; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+  done
+
+  printf '%s\n' "$configured"
+}
+
 project_host_dir() {
   if [[ -n "${PROJECT_HOST_DIR:-}" ]]; then
     printf '%s\n' "$PROJECT_HOST_DIR"
     return
   fi
+  if [[ "$PROJECT_DIR" != "/project" && -f "$PROJECT_DIR/.project/spec.yaml" ]]; then
+    printf '%s\n' "$PROJECT_DIR"
+    return
+  fi
   local target="$HOSTNAME"
-  if docker inspect "$PROJECT_CONTAINER_NAME" >/dev/null 2>&1; then
+  if docker container inspect "$PROJECT_CONTAINER_NAME" >/dev/null 2>&1; then
     target="$PROJECT_CONTAINER_NAME"
   fi
   docker inspect -f '{{range .Mounts}}{{if eq .Destination "/project"}}{{.Source}}{{end}}{{end}}' "$target"
 }
 
 network_container() {
-  if docker inspect "$PROJECT_CONTAINER_NAME" >/dev/null 2>&1; then
+  if docker container inspect -f '{{.State.Status}}' "$PROJECT_CONTAINER_NAME" 2>/dev/null | grep -qx running; then
     printf '%s\n' "$PROJECT_CONTAINER_NAME"
+  elif docker inspect -f '{{.State.Status}}' "$CONTAINER_NAME" 2>/dev/null | grep -qx running; then
+    printf '%s\n' "$CONTAINER_NAME"
+  elif docker inspect "$HOSTNAME" >/dev/null 2>&1; then
+    printf '%s\n' "$HOSTNAME"
+  elif docker inspect -f '{{.State.Status}}' workbench-proxy 2>/dev/null | grep -qx running; then
+    printf '%s\n' workbench-proxy
   else
     printf '%s\n' "$HOSTNAME"
   fi
+}
+
+service_curl() {
+  local url="$1"
+  shift || true
+  if curl -fsS --max-time 5 "$@" "$url" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local container
+  for container in "$CONTAINER_NAME" "$COMFYUI_CONTAINER_NAME" "$MAILPIT_CONTAINER_NAME" "$GOPHISH_PROXY_CONTAINER_NAME"; do
+    if ! docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null | grep -qx running; then
+      continue
+    fi
+    if docker exec "$container" sh -lc 'command -v curl >/dev/null 2>&1' >/dev/null 2>&1; then
+      docker exec "$container" curl -fsS --max-time 5 "$@" "$url" >/dev/null
+      return $?
+    fi
+    if [[ "$#" -eq 0 ]] && docker exec "$container" sh -lc 'command -v wget >/dev/null 2>&1' >/dev/null 2>&1; then
+      docker exec "$container" wget -q -T 5 -O /dev/null "$url"
+      return $?
+    fi
+  done
+  return 1
 }
 
 repair_state_permissions() {
@@ -105,7 +179,10 @@ repair_state_permissions() {
 prepare_state() {
   local host_project="$1"
   local base_url
-  base_url="$(normalize_base_url "$BASE_URL")"
+  base_url="${2:-}"
+  if [[ -z "$base_url" ]]; then
+    base_url="$(resolve_llm_base_url "$BASE_URL")"
+  fi
   mkdir -p "$STATE_DIR" "$(dirname "$LOG_FILE")"
   repair_state_permissions "$host_project"
   chmod 700 "$STATE_DIR" 2>/dev/null || true
@@ -119,9 +196,10 @@ prepare_state() {
   cat >"$STATE_DIR/.env" <<EOF
 OPENAI_BASE_URL=$base_url
 OPENAI_API_KEY=$API_KEY
-HERMES_MODEL=$MODEL
 HERMES_BASE_URL=$base_url
 HERMES_API_KEY=$API_KEY
+HERMES_TUI_PROVIDER=$CUSTOM_PROVIDER_NAME
+HERMES_INFERENCE_PROVIDER=$CUSTOM_PROVIDER_NAME
 GOPHISH_ADMIN_URL=$GOPHISH_ADMIN_URL
 GOPHISH_API_URL=$GOPHISH_API_URL
 GOPHISH_PUBLIC_URL=$GOPHISH_PUBLIC_URL
@@ -407,19 +485,27 @@ PY
 
   cat >"$STATE_DIR/config.yaml" <<EOF
 model:
-  provider: custom
+  provider: $CUSTOM_PROVIDER_NAME
   default: "$MODEL"
   model: "$MODEL"
   base_url: "$base_url"
   api_key: "$API_KEY"
   api_mode: chat_completions
   max_tokens: $MAX_TOKENS
+providers:
+  $CUSTOM_PROVIDER_NAME:
+    api: "$base_url"
+    name: "$CUSTOM_PROVIDER_NAME"
+    api_key: "$API_KEY"
+    default_model: "$MODEL"
+    transport: chat_completions
 approvals:
   mode: "off"
   timeout: 60
   cron_mode: deny
   mcp_reload_confirm: true
   destructive_slash_confirm: true
+_config_version: 29
 EOF
 
   cat >"$STATE_DIR/SOUL.md" <<EOF
@@ -487,7 +573,7 @@ EOF
 wait_for_mailpit() {
   local i
   for i in $(seq 1 60); do
-    if curl -fsS --max-time 3 "$MAILPIT_WEB_URL/api/v1/info" >/dev/null 2>&1; then
+    if service_curl "$MAILPIT_WEB_URL/api/v1/info"; then
       return 0
     fi
     sleep 1
@@ -518,7 +604,7 @@ start_mailpit() {
 wait_for_comfyui() {
   local i
   for i in $(seq 1 180); do
-    if curl -fsS --max-time 3 "$COMFYUI_DIRECT_URL/system_stats" >/dev/null 2>&1; then
+    if service_curl "$COMFYUI_DIRECT_URL/system_stats"; then
       return 0
     fi
     sleep 2
@@ -747,7 +833,7 @@ EOF
 wait_for_gophish() {
   local i
   for i in $(seq 1 60); do
-    if curl -fsS --max-time 3 "$GOPHISH_ADMIN_URL/login" >/dev/null 2>&1; then
+    if service_curl "$GOPHISH_ADMIN_URL/login"; then
       return 0
     fi
     sleep 2
@@ -807,6 +893,7 @@ start_gophish() {
 }
 
 stop_gophish_proxy() {
+  docker rm -f "$GOPHISH_PROXY_CONTAINER_NAME" >/dev/null 2>&1 || true
   if [ -f "$GOPHISH_PROXY_PID_FILE" ]; then
     local pid
     pid="$(cat "$GOPHISH_PROXY_PID_FILE" 2>/dev/null || true)"
@@ -818,30 +905,59 @@ stop_gophish_proxy() {
 }
 
 start_gophish_proxy() {
+  local host_project
+  local host_asset_root
+  local gophish_proxy_prefix="/projects/iphish-agent/applications/GoPhish"
+  local network_target
+  host_project="$(project_host_dir)"
+  host_asset_root="$host_project/data/hermes/generated-images"
+  network_target="$(network_container)"
+  mkdir -p "$host_asset_root"
   mkdir -p "$(dirname "$GOPHISH_PROXY_LOG_FILE")"
   stop_gophish_proxy
   {
     printf '=== starting GoPhish Workbench proxy at %s ===\n' "$(date -Is)"
-    printf 'port=%s prefix=%s\n' "$GOPHISH_PROXY_PORT" "${PROXY_PREFIX:-/projects/iphish-agent/applications/GoPhish}"
+    printf 'port=%s prefix=%s\n' "$GOPHISH_PROXY_PORT" "$gophish_proxy_prefix"
   } >"$GOPHISH_PROXY_LOG_FILE"
-  GOPHISH_ASSET_ROOT="$GOPHISH_ASSET_ROOT" \
-    GOPHISH_API_KEY="$GOPHISH_API_KEY" \
-    nohup python3 "$PROJECT_DIR/scripts/gophish_workbench_proxy.py" >>"$GOPHISH_PROXY_LOG_FILE" 2>&1 </dev/null &
-  echo "$!" >"$GOPHISH_PROXY_PID_FILE"
+  docker run -d \
+    --name "$GOPHISH_PROXY_CONTAINER_NAME" \
+    --restart unless-stopped \
+    --network "container:$network_target" \
+    --entrypoint python3 \
+    -v "$PROJECT_DIR/scripts/gophish_workbench_proxy.py:/app/gophish_workbench_proxy.py:ro" \
+    -v "$host_asset_root:/assets:ro" \
+    -e GOPHISH_ASSET_ROOT=/assets \
+    -e GOPHISH_API_KEY="$GOPHISH_API_KEY" \
+    -e PROXY_PREFIX="$gophish_proxy_prefix" \
+    -e GOPHISH_PROXY_PORT="$GOPHISH_PROXY_PORT" \
+    "$IMAGE" \
+    /app/gophish_workbench_proxy.py >>"$GOPHISH_PROXY_LOG_FILE" 2>&1
   local i
   for i in $(seq 1 30); do
-    if curl -fsS --max-time 2 "http://127.0.0.1:${GOPHISH_PROXY_PORT}/projects/iphish-agent/applications/GoPhish/login" >/dev/null 2>&1; then
+    if service_curl "http://127.0.0.1:${GOPHISH_PROXY_PORT}/healthz"; then
       return 0
     fi
     sleep 1
   done
+  printf 'GoPhish Workbench proxy did not become healthy. See %s\n' "$GOPHISH_PROXY_LOG_FILE" >>"$LOG_FILE"
   return 1
 }
 
 wait_for_hermes_api() {
   local i
   for i in $(seq 1 90); do
-    if curl -fsS --max-time 2 http://127.0.0.1:8642/health >/dev/null 2>&1; then
+    if service_curl http://127.0.0.1:8642/health; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+wait_for_hermes_dashboard() {
+  local i
+  for i in $(seq 1 90); do
+    if service_curl "http://127.0.0.1:${HERMES_DASHBOARD_PORT}/"; then
       return 0
     fi
     sleep 2
@@ -852,12 +968,14 @@ wait_for_hermes_api() {
 start_container() {
   local host_project
   local network_target
+  local llm_base_url
   host_project="$(project_host_dir)"
   network_target="$(network_container)"
-  prepare_state "$host_project"
+  llm_base_url="$(resolve_llm_base_url "$BASE_URL")"
+  prepare_state "$host_project" "$llm_base_url"
   {
     printf '=== starting Hermes Iphish Agent at %s ===\n' "$(date -Is)"
-    printf 'image=%s container=%s model=%s base_url=%s\n' "$IMAGE" "$CONTAINER_NAME" "$MODEL" "$(normalize_base_url "$BASE_URL")"
+    printf 'image=%s container=%s model=%s base_url=%s\n' "$IMAGE" "$CONTAINER_NAME" "$MODEL" "$llm_base_url"
   } >"$LOG_FILE"
 
   start_gophish
@@ -871,23 +989,24 @@ start_container() {
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     --network "container:$network_target" \
-    -e HERMES_DASHBOARD=0 \
+    -e HERMES_DASHBOARD=1 \
     -e HERMES_UID="$(id -u)" \
     -e HERMES_GID="$(id -g)" \
     -e PUID="$(id -u)" \
     -e PGID="$(id -g)" \
-    -e HERMES_DASHBOARD_HOST=127.0.0.1 \
-    -e HERMES_DASHBOARD_PORT=9120 \
+    -e HERMES_DASHBOARD_HOST=0.0.0.0 \
+    -e HERMES_DASHBOARD_PORT="$HERMES_DASHBOARD_PORT" \
     -e HERMES_DASHBOARD_INSECURE=1 \
     -e PATH=/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     -e API_SERVER_ENABLED=true \
     -e API_SERVER_HOST=0.0.0.0 \
     -e API_SERVER_KEY="$API_SERVER_KEY" \
-    -e OPENAI_BASE_URL="$(normalize_base_url "$BASE_URL")" \
+    -e OPENAI_BASE_URL="$llm_base_url" \
     -e OPENAI_API_KEY="$API_KEY" \
-    -e HERMES_MODEL="$MODEL" \
-    -e HERMES_BASE_URL="$(normalize_base_url "$BASE_URL")" \
+    -e HERMES_BASE_URL="$llm_base_url" \
     -e HERMES_API_KEY="$API_KEY" \
+    -e HERMES_TUI_PROVIDER="$CUSTOM_PROVIDER_NAME" \
+    -e HERMES_INFERENCE_PROVIDER="$CUSTOM_PROVIDER_NAME" \
     -e WORKBENCH_APP_BASE_URL="$WORKBENCH_APP_BASE_URL" \
     -e GOPHISH_ADMIN_URL="$GOPHISH_ADMIN_URL" \
     -e GOPHISH_API_URL="$GOPHISH_API_URL" \
@@ -908,7 +1027,7 @@ start_container() {
 
   nohup docker logs --timestamps --follow "$CONTAINER_NAME" >>"$LOG_FILE" 2>&1 </dev/null &
   wait_for_hermes_api
-  start_tui
+  wait_for_hermes_dashboard
 }
 
 stop_tui() {
@@ -936,18 +1055,21 @@ start_tui() {
       -e PATH=/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
       -e HERMES_HOME=/opt/data \
       "$CONTAINER_NAME" \
-      /opt/hermes/bin/hermes --tui >>"$TTYD_LOG_FILE" 2>&1 </dev/null &
+      /opt/hermes/bin/hermes --tui --provider "$CUSTOM_PROVIDER_NAME" -m "$MODEL" >>"$TTYD_LOG_FILE" 2>&1 </dev/null &
   echo "$!" >"$TTYD_PID_FILE"
 }
 
 health() {
+  local llm_base_url
+  llm_base_url="$(resolve_llm_base_url "$BASE_URL")"
   docker inspect -f '{{.State.Status}}' "$CONTAINER_NAME" 2>/dev/null | grep -qx running
   docker inspect -f '{{.State.Status}}' "$GOPHISH_CONTAINER_NAME" 2>/dev/null | grep -qx running
   docker inspect -f '{{.State.Status}}' "$MAILPIT_CONTAINER_NAME" 2>/dev/null | grep -qx running
-  curl -fsS --max-time 5 http://127.0.0.1:8642/health >/dev/null
-  curl -fsS --max-time 5 "http://127.0.0.1:${TTYD_PORT}/" >/dev/null
-  curl -fsS --max-time 5 -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaigns/" >/dev/null
-  curl -fsS --max-time 5 "$MAILPIT_WEB_URL/api/v1/info" >/dev/null
+  curl -fsS --max-time 5 "${llm_base_url%/}/models" >/dev/null
+  service_curl http://127.0.0.1:8642/health
+  service_curl "http://127.0.0.1:${HERMES_DASHBOARD_PORT}/"
+  service_curl "$GOPHISH_API_URL/campaigns/" -H "Authorization: Bearer $GOPHISH_API_KEY"
+  service_curl "$MAILPIT_WEB_URL/api/v1/info"
 }
 
 case "$ACTION" in
@@ -958,6 +1080,9 @@ case "$ACTION" in
     start_gophish
     start_gophish_proxy
     ;;
+  start-gophish-proxy)
+    start_gophish_proxy
+    ;;
   start-mailpit)
     start_mailpit
     ;;
@@ -966,6 +1091,7 @@ case "$ACTION" in
     ;;
   stop)
     stop_tui
+    stop_gophish_proxy
     docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
     docker rm -f "$GOPHISH_CONTAINER_NAME" >/dev/null 2>&1 || true
     docker rm -f "$MAILPIT_CONTAINER_NAME" >/dev/null 2>&1 || true
@@ -991,25 +1117,26 @@ case "$ACTION" in
   gophish-health)
     docker inspect -f '{{.State.Status}}' "$GOPHISH_CONTAINER_NAME" 2>/dev/null | grep -qx running
     docker inspect -f '{{.State.Status}}' "$MAILPIT_CONTAINER_NAME" 2>/dev/null | grep -qx running
-    curl -fsS --max-time 5 "$GOPHISH_ADMIN_URL/login" >/dev/null
-    curl -fsS --max-time 5 -H "Authorization: Bearer $GOPHISH_API_KEY" "$GOPHISH_API_URL/campaigns/" >/dev/null
-    curl -fsS --max-time 5 "http://127.0.0.1:${GOPHISH_PROXY_PORT}/projects/iphish-agent/applications/GoPhish/login" >/dev/null
+    docker inspect -f '{{.State.Status}}' "$GOPHISH_PROXY_CONTAINER_NAME" 2>/dev/null | grep -qx running
+    service_curl "$GOPHISH_ADMIN_URL/login"
+    service_curl "$GOPHISH_API_URL/campaigns/" -H "Authorization: Bearer $GOPHISH_API_KEY"
+    service_curl "http://127.0.0.1:${GOPHISH_PROXY_PORT}/healthz"
     ;;
   gophish-landing-health)
     docker inspect -f '{{.State.Status}}' "$GOPHISH_CONTAINER_NAME" 2>/dev/null | grep -qx running
-    code="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080/" || true)"
+    code="$(docker exec "$CONTAINER_NAME" curl -sS --max-time 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080/" || true)"
     [ "$code" = "404" ] || [ "$code" = "200" ]
     ;;
   mailpit-health)
     docker inspect -f '{{.State.Status}}' "$MAILPIT_CONTAINER_NAME" 2>/dev/null | grep -qx running
-    curl -fsS --max-time 5 "$MAILPIT_WEB_URL/api/v1/info" >/dev/null
+    service_curl "$MAILPIT_WEB_URL/api/v1/info"
     ;;
   comfyui-health)
     docker inspect -f '{{.State.Status}}' "$COMFYUI_CONTAINER_NAME" 2>/dev/null | grep -qx running
-    curl -fsS --max-time 5 "$COMFYUI_DIRECT_URL/system_stats" >/dev/null
+    service_curl "$COMFYUI_DIRECT_URL/system_stats"
     ;;
   status)
-    docker ps -a --filter "name=$CONTAINER_NAME" --filter "name=$GOPHISH_CONTAINER_NAME" --filter "name=$MAILPIT_CONTAINER_NAME" --filter "name=$COMFYUI_CONTAINER_NAME" --format 'table {{.Names}}\t{{.Status}}'
+    docker ps -a --filter "name=$CONTAINER_NAME" --filter "name=$GOPHISH_CONTAINER_NAME" --filter "name=$MAILPIT_CONTAINER_NAME" --filter "name=$COMFYUI_CONTAINER_NAME" --filter "name=$GOPHISH_PROXY_CONTAINER_NAME" --format 'table {{.Names}}\t{{.Status}}'
     ;;
   logs)
     docker logs --tail "${2:-120}" "$CONTAINER_NAME"
@@ -1027,7 +1154,7 @@ case "$ACTION" in
     tail -n "${2:-120}" "$TTYD_LOG_FILE"
     ;;
   *)
-    printf 'Usage: %s {start|start-gophish|start-mailpit|start-comfyui|stop|stop-gophish|stop-mailpit|stop-comfyui|restart|health|gophish-health|gophish-landing-health|mailpit-health|comfyui-health|status|logs|gophish-logs|mailpit-logs|comfyui-logs|tui-logs}\n' "$0" >&2
+    printf 'Usage: %s {start|start-gophish|start-gophish-proxy|start-mailpit|start-comfyui|stop|stop-gophish|stop-mailpit|stop-comfyui|restart|health|gophish-health|gophish-landing-health|mailpit-health|comfyui-health|status|logs|gophish-logs|mailpit-logs|comfyui-logs|tui-logs}\n' "$0" >&2
     exit 2
     ;;
 esac

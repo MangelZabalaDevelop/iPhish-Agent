@@ -14,27 +14,30 @@ Simple NVIDIA AI Workbench project for running:
 3. Confirm these two values:
 
 ```text
-HERMES_MODEL=Qwen3.6-35B-A3B-NVFP4
-HERMES_BASE_URL=http://192.168.0.8:9494
+HERMES_MODEL=Xpectra
+HERMES_BASE_URL=http://192.168.0.3:9494
 ```
 
 Use the IP and port of your running vLLM server. If your vLLM is already using
-`192.168.0.8:9494`, you do not need to change anything.
+that model name and endpoint, you do not need to change anything.
+
+Iphish always connects to this endpoint as a local OpenAI-compatible provider.
+Model names such as `Xpectra` are treated as local model aliases, so no
+cloud-provider API key is required.
 
 ## Start
 
-1. Start **Iphish Agent**.
-2. Click **Open Iphish Agent** to open the agent terminal.
-3. Start **GoPhish**.
-4. Click **Open GoPhish** to open the GoPhish admin panel.
-5. Start **Mailpit**.
-6. Click **Open Mailpit** to review test emails.
-7. Start **ComfyUI** when the agent needs images.
-8. Click **Open ComfyUI** to inspect generated images and workflows.
+1. Start **Iphish**.
+2. Click **Open Iphish** to open the Hermes chat dashboard.
+3. Start **GoPhish** and click **Open GoPhish** for the campaign admin UI.
+4. Start **Mailpit** and click **Open Mailpit** to review test email.
+5. Start **ComfyUI** and click **Open ComfyUI** when the agent needs images.
 
 The first ComfyUI start can take a while because it downloads the official
 Z-Image-Turbo files. After that, the files stay local in the project data
 folder.
+
+Each service is its own Workbench application and has its own **Open** action.
 
 ## GoPhish Login
 
