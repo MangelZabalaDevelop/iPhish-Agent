@@ -912,7 +912,7 @@ start_gophish_proxy() {
   host_project="$(project_host_dir)"
   host_asset_root="$host_project/data/hermes/generated-images"
   network_target="$(network_container)"
-  mkdir -p "$host_asset_root"
+  mkdir -p "$GOPHISH_ASSET_ROOT"
   mkdir -p "$(dirname "$GOPHISH_PROXY_LOG_FILE")"
   stop_gophish_proxy
   {
@@ -924,7 +924,7 @@ start_gophish_proxy() {
     --restart unless-stopped \
     --network "container:$network_target" \
     --entrypoint python3 \
-    -v "$PROJECT_DIR/scripts/gophish_workbench_proxy.py:/app/gophish_workbench_proxy.py:ro" \
+    -v "$host_project/scripts/gophish_workbench_proxy.py:/app/gophish_workbench_proxy.py:ro" \
     -v "$host_asset_root:/assets:ro" \
     -e GOPHISH_ASSET_ROOT=/assets \
     -e GOPHISH_API_KEY="$GOPHISH_API_KEY" \
