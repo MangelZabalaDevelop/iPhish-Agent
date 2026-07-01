@@ -3,8 +3,13 @@ specMinorVersion: 2
 meta:
     name: iphish-agent
     image: project-iphish-agent
-    description: Hermes-powered local AI agent on Dell Pro GB10, built to sharpen enterprise phishing defense safely.
-    labels: []
+    description: Hermes-powered local AI agent on Dell Pro Max with GB10, packaged with NVIDIA AI Workbench and OpenShell guardrails for authorized phishing-awareness simulation.
+    labels:
+        - dell-pro-max-gb10
+        - nvidia-ai-workbench
+        - hermes-agent
+        - openshell
+        - phishing-awareness
     createdOn: "2026-06-11T14:07:50Z"
     defaultBranch: main
 layout:
@@ -74,7 +79,7 @@ execution:
           start_command: bash -lc '/project/scripts/hermes_workbench.sh start'
           health_check_command: bash -lc '/project/scripts/hermes_workbench.sh health'
           stop_command: bash -lc '/project/scripts/hermes_workbench.sh stop'
-          user_msg: "Iphish is ready: {{URL}}"
+          user_msg: 'Iphish is ready: {{URL}}'
           logfile_path: /project/logs/iphish-agent.log
           timeout_seconds: 600
           icon_url: ""
@@ -90,7 +95,7 @@ execution:
           start_command: bash -lc '/project/scripts/hermes_workbench.sh start-gophish'
           health_check_command: bash -lc '/project/scripts/hermes_workbench.sh gophish-health'
           stop_command: bash -lc '/project/scripts/hermes_workbench.sh stop-gophish'
-          user_msg: "GoPhish is ready: {{URL}}"
+          user_msg: 'GoPhish is ready: {{URL}}'
           logfile_path: /project/logs/iphish-agent.log
           timeout_seconds: 120
           icon_url: ""
@@ -106,7 +111,7 @@ execution:
           start_command: bash -lc '/project/scripts/hermes_workbench.sh start-mailpit'
           health_check_command: bash -lc '/project/scripts/hermes_workbench.sh mailpit-health'
           stop_command: bash -lc '/project/scripts/hermes_workbench.sh stop-mailpit'
-          user_msg: "Mailpit is ready: {{URL}}"
+          user_msg: 'Mailpit is ready: {{URL}}'
           logfile_path: /project/logs/iphish-agent.log
           timeout_seconds: 120
           icon_url: ""
@@ -122,7 +127,7 @@ execution:
           start_command: bash -lc '/project/scripts/hermes_workbench.sh start-comfyui'
           health_check_command: bash -lc '/project/scripts/hermes_workbench.sh comfyui-health'
           stop_command: bash -lc '/project/scripts/hermes_workbench.sh stop-comfyui'
-          user_msg: "ComfyUI is ready: {{URL}}"
+          user_msg: 'ComfyUI is ready: {{URL}}'
           logfile_path: /project/logs/iphish-agent.log
           timeout_seconds: 2400
           icon_url: ""

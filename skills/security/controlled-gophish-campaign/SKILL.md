@@ -27,6 +27,7 @@ blue-team awareness exercise.
 - Landing forms may collect low-risk training fields only, such as name, username, email, department, or country.
 - Do not send a final campaign through real SMTP until the user explicitly approves the reviewed content.
 - If SMTP/Mailpit is unavailable, stop and explain exactly what is missing. Do not pretend the test email was sent.
+- Always visually verify the rendered email and landing page after adding any image or logo. Reject and fix missing, fake, low-contrast, dark-on-dark, stretched/squashed, cropped, blurry, tiny, or unreadable assets; if vision review is unavailable, stop.
 
 Everything else is flexible. Prefer progress over ceremony: use reasonable
 defaults, keep the user informed, and ask only for information that is truly
@@ -40,7 +41,7 @@ GoPhish, Mailpit, and ComfyUI are local to this Workbench project.
 GOPHISH_ADMIN_URL="${GOPHISH_ADMIN_URL:-http://127.0.0.1:3333}"
 GOPHISH_API_URL="${GOPHISH_API_URL:-http://127.0.0.1:3333/api}"
 GOPHISH_PUBLIC_URL="${GOPHISH_PUBLIC_URL:-http://localhost:10000/projects/iphish-agent/applications/GoPhish/landing}"
-GOPHISH_API_KEY="${GOPHISH_API_KEY:-local-gophish-api-key-change-me}"
+GOPHISH_API_KEY="${GOPHISH_API_KEY:-runtime-generated-gophish-key}"
 MAILPIT_WEB_URL="${MAILPIT_WEB_URL:-http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit}"
 MAILPIT_API_URL="${MAILPIT_API_URL:-http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit/api/v1}"
 MAILPIT_USER_URL="${MAILPIT_USER_URL:-http://localhost:10000/projects/iphish-agent/applications/Mailpit}"
@@ -144,6 +145,14 @@ image. Use the returned Workbench URL in GoPhish HTML, for example:
 Do not replace requested generated images with procedural SVGs, emoji art,
 base64 placeholder drawings, or decorative CSS-only illustrations. If image
 generation fails, report that limitation instead of faking generated images.
+
+If the ComfyUI generate script reports `"vision_review": {"status": "skipped"}`
+or `vision_analyze` returns "No LLM provider configured for task=vision", treat
+that as a Hermes auxiliary vision configuration problem, not proof that the
+local model lacks vision. Stop, report the configuration error, and ask the
+operator to configure `auxiliary.vision` or retry after it is fixed. Do not
+claim automated visual review succeeded and do not assume prompts produced clean
+images without inspection.
 
 ## GoPhish API Shape
 

@@ -25,23 +25,21 @@ GOPHISH_PROXY_LOG_FILE="${GOPHISH_PROXY_LOG_FILE:-$PROJECT_DIR/logs/gophish-work
 GOPHISH_PROXY_PID_FILE="${GOPHISH_PROXY_PID_FILE:-/tmp/iphish-agent-gophish-proxy.pid}"
 STATE_DIR="${STATE_DIR:-$PROJECT_DIR/data/hermes}"
 GOPHISH_STATE_DIR="${GOPHISH_STATE_DIR:-$PROJECT_DIR/data/gophish}"
-CONTAINER_NAME="${HERMES_CONTAINER_NAME:-xpectra-iphish-agent}"
+CONTAINER_NAME="${HERMES_CONTAINER_NAME:-iphish-agent}"
 IMAGE="${HERMES_IMAGE:-nousresearch/hermes-agent:latest}"
-GOPHISH_CONTAINER_NAME="${GOPHISH_CONTAINER_NAME:-xpectra-iphish-agent-gophish}"
+GOPHISH_CONTAINER_NAME="${GOPHISH_CONTAINER_NAME:-iphish-agent-gophish}"
 GOPHISH_IMAGE="${GOPHISH_IMAGE:-xpectra/gophish-arm64:v0.12.1}"
-GOPHISH_PROXY_CONTAINER_NAME="${GOPHISH_PROXY_CONTAINER_NAME:-xpectra-iphish-agent-gophish-proxy}"
-MAILPIT_CONTAINER_NAME="${MAILPIT_CONTAINER_NAME:-xpectra-iphish-agent-mailpit}"
+GOPHISH_PROXY_CONTAINER_NAME="${GOPHISH_PROXY_CONTAINER_NAME:-iphish-agent-gophish-proxy}"
+MAILPIT_CONTAINER_NAME="${MAILPIT_CONTAINER_NAME:-iphish-agent-mailpit}"
 MAILPIT_IMAGE="${MAILPIT_IMAGE:-axllent/mailpit:latest}"
-COMFYUI_CONTAINER_NAME="${COMFYUI_CONTAINER_NAME:-xpectra-iphish-agent-comfyui}"
+COMFYUI_CONTAINER_NAME="${COMFYUI_CONTAINER_NAME:-iphish-agent-comfyui}"
 COMFYUI_IMAGE="${COMFYUI_IMAGE:-xpectra/comfyui-workbench:latest}"
-MODEL="${HERMES_MODEL:-Qwen3.6-35B-A3B-NVFP4}"
-BASE_URL="${HERMES_BASE_URL:-http://192.168.0.8:9494}"
+MODEL="${HERMES_MODEL:-Qwen3.6}"
+BASE_URL="${HERMES_BASE_URL:-http://127.0.0.1:9494}"
 API_KEY="${HERMES_API_KEY:-local-external-vllm-placeholder}"
 CUSTOM_PROVIDER_NAME="${HERMES_CUSTOM_PROVIDER_NAME:-local-vllm}"
 MAX_TOKENS="${HERMES_MAX_TOKENS:-32768}"
-API_SERVER_KEY="${HERMES_API_SERVER_KEY:-local-hermes-agent}"
 TTYD_PORT="${HERMES_TUI_PORT:-9119}"
-GOPHISH_API_KEY="${GOPHISH_API_KEY:-local-gophish-api-key-change-me}"
 GOPHISH_ADMIN_PASSWORD_HASH="${GOPHISH_ADMIN_PASSWORD_HASH:-\$2a\$10\$I/Wbkx1K48wsS8TUg.BMV.iTrQEiAYcSkHXmrWfUk4OrMeKabsU26}"
 GOPHISH_ADMIN_URL="${GOPHISH_ADMIN_URL:-http://127.0.0.1:3333}"
 GOPHISH_API_URL="${GOPHISH_API_URL:-http://127.0.0.1:3333/api}"
@@ -62,6 +60,32 @@ COMFYUI_WEB_URL="${COMFYUI_WEB_URL:-http://127.0.0.1:8188${COMFYUI_WEBROOT}}"
 COMFYUI_API_URL="${COMFYUI_API_URL:-$COMFYUI_WEB_URL}"
 COMFYUI_DIRECT_URL="${COMFYUI_DIRECT_URL:-http://127.0.0.1:8188}"
 PROJECT_CONTAINER_NAME="${PROJECT_CONTAINER_NAME:-project-iphish-agent}"
+
+runtime_secret() {
+  local name="$1"
+  local bytes="${2:-24}"
+  local secret_dir="${IPHISH_SECRET_DIR:-$PROJECT_DIR/data/scratch/secrets}"
+  local secret_file="$secret_dir/$name"
+  mkdir -p "$secret_dir"
+  chmod 700 "$secret_dir" 2>/dev/null || true
+  if [[ ! -s "$secret_file" ]]; then
+    if command -v openssl >/dev/null 2>&1; then
+      openssl rand -hex "$bytes" >"$secret_file"
+    else
+      python3 - "$bytes" >"$secret_file" <<'PY'
+import secrets
+import sys
+
+print(secrets.token_hex(int(sys.argv[1])))
+PY
+    fi
+    chmod 600 "$secret_file" 2>/dev/null || true
+  fi
+  cat "$secret_file"
+}
+
+API_SERVER_KEY="${HERMES_API_SERVER_KEY:-$(runtime_secret HERMES_API_SERVER_KEY 24)}"
+GOPHISH_API_KEY="${GOPHISH_API_KEY:-$(runtime_secret GOPHISH_API_KEY 24)}"
 if [[ -z "${DOCKER_HOST:-}" ]]; then
   if [[ -S /host-run/docker.sock ]]; then
     DOCKER_HOST="unix:///host-run/docker.sock"
@@ -97,8 +121,7 @@ resolve_llm_base_url() {
   for candidate in ${HERMES_BASE_URL_CANDIDATES:-} \
     http://10.100.88.2:9494 \
     http://10.100.89.2:9494 \
-    http://127.0.0.1:9494 \
-    http://192.168.0.8:9494; do
+    http://127.0.0.1:9494; do
     candidate="$(normalize_base_url "$candidate")"
     if base_url_is_reachable "$candidate"; then
       printf '%s\n' "$candidate"
@@ -250,6 +273,7 @@ prepare_state() {
   cat >"$STATE_DIR/.env" <<EOF
 OPENAI_BASE_URL=$base_url
 OPENAI_API_KEY=$API_KEY
+HERMES_MODEL=$MODEL
 HERMES_BASE_URL=$base_url
 HERMES_API_KEY=$API_KEY
 HERMES_TUI_PROVIDER=$CUSTOM_PROVIDER_NAME
@@ -370,7 +394,7 @@ def gophish_list(args):
         except ValueError:
             return usage()
     base = os.environ.get("GOPHISH_API_URL", "http://127.0.0.1:3333/api").rstrip("/")
-    key = os.environ.get("GOPHISH_API_KEY", "local-gophish-api-key-change-me")
+    key = os.environ.get("GOPHISH_API_KEY", "runtime-generated-gophish-key")
     endpoint = "campaigns" if resource == "campaigns" else resource
     items = request("GET", f"{base}/{endpoint}/", headers={"Authorization": f"Bearer {key}"})
     if not isinstance(items, list):
@@ -390,7 +414,7 @@ def gophish(args):
     method, path = args[0].upper(), args[1]
     payload = read_payload(args[2]) if len(args) > 2 else None
     base = os.environ.get("GOPHISH_API_URL", "http://127.0.0.1:3333/api").rstrip("/")
-    key = os.environ.get("GOPHISH_API_KEY", "local-gophish-api-key-change-me")
+    key = os.environ.get("GOPHISH_API_KEY", "runtime-generated-gophish-key")
     if not path.startswith("/"):
         path = "/" + path
     if payload is not None and method in {"POST", "PUT"} and path.startswith("/campaigns"):
@@ -458,7 +482,7 @@ def review(args):
     if len(args) == 2 and not as_json:
         return usage()
     gophish_base = os.environ.get("GOPHISH_API_URL", "http://127.0.0.1:3333/api").rstrip("/")
-    gophish_key = os.environ.get("GOPHISH_API_KEY", "local-gophish-api-key-change-me")
+    gophish_key = os.environ.get("GOPHISH_API_KEY", "runtime-generated-gophish-key")
     mailpit_api = os.environ.get("MAILPIT_API_URL", "http://127.0.0.1:8025/projects/iphish-agent/applications/Mailpit/api/v1").rstrip("/")
     mailpit_user = os.environ.get("MAILPIT_USER_URL", "http://localhost:10000/projects/iphish-agent/applications/Mailpit").rstrip("/")
     public_url = os.environ.get("GOPHISH_PUBLIC_URL", "http://localhost:10000/projects/iphish-agent/applications/GoPhish/landing").rstrip("/")
@@ -981,7 +1005,6 @@ start_gophish_proxy() {
     -v "$host_project/scripts/gophish_workbench_proxy.py:/app/gophish_workbench_proxy.py:ro" \
     -v "$host_asset_root:/assets:ro" \
     -e GOPHISH_ASSET_ROOT=/assets \
-    -e GOPHISH_API_KEY="$GOPHISH_API_KEY" \
     -e PROXY_PREFIX="$gophish_proxy_prefix" \
     -e GOPHISH_PROXY_PORT="$GOPHISH_PROXY_PORT" \
     "$IMAGE" \
@@ -1058,6 +1081,7 @@ start_container() {
     -e API_SERVER_KEY="$API_SERVER_KEY" \
     -e OPENAI_BASE_URL="$llm_base_url" \
     -e OPENAI_API_KEY="$API_KEY" \
+    -e HERMES_MODEL="$MODEL" \
     -e HERMES_BASE_URL="$llm_base_url" \
     -e HERMES_API_KEY="$API_KEY" \
     -e HERMES_TUI_PROVIDER="$CUSTOM_PROVIDER_NAME" \

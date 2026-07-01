@@ -1,0 +1,46 @@
+name: Public Project Checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install validation dependencies
+        run: python -m pip install --upgrade pyyaml
+
+      - name: Validate YAML
+        run: |
+          python - <<'PY'
+          import yaml
+          from pathlib import Path
+
+          for path in [Path(".project/spec.yaml"), Path("policies/openshell-policy.example.yaml")]:
+              with path.open("r", encoding="utf-8") as handle:
+                  yaml.safe_load(handle)
+              print(f"validated {path}")
+          PY
+
+      - name: Check shell syntax
+        run: bash -n scripts/hermes_workbench.sh preBuild.bash postBuild.bash
+
+      - name: Compile Python
+        run: python -m compileall scripts skills
+
+      - name: Block tracked runtime artifacts
+        run: |
+          forbidden='(^|/)(\.env$|.*\.pem$|.*\.key$|gophish\.db$|state\.db$|response_store\.db$|kanban\.db$|logs/|data/hermes/|data/gophish/|data/comfyui/models/|data/comfyui/input/|data/comfyui/output/|data/comfyui/user/)'
+          if git ls-files | grep -E "$forbidden"; then
+            echo "Tracked runtime artifact detected"
+            exit 1
+          fi

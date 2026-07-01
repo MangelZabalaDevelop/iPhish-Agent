@@ -15,7 +15,6 @@ PROXY_PREFIX = os.environ.get("PROXY_PREFIX", "/projects/iphish-agent/applicatio
 LANDING_PREFIX = PROXY_PREFIX + "/landing"
 ASSET_PREFIX = PROXY_PREFIX + "/assets"
 ASSET_ROOT = Path(os.environ.get("GOPHISH_ASSET_ROOT", "/project/data/hermes/generated-images")).resolve()
-GOPHISH_API_KEY = os.environ.get("GOPHISH_API_KEY", "")
 LISTEN_HOST = os.environ.get("GOPHISH_PROXY_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.environ.get("GOPHISH_PROXY_PORT", "3334"))
 
@@ -141,9 +140,6 @@ class GoPhishProxy(BaseHTTPRequestHandler):
         port, prefix, path = self.route()
         headers["Host"] = f"{UPSTREAM_HOST}:{port}"
         headers["X-Forwarded-Prefix"] = PROXY_PREFIX
-        if port == UPSTREAM_PORT and path.startswith("/api/") and GOPHISH_API_KEY:
-            headers["Authorization"] = f"Bearer {GOPHISH_API_KEY}"
-
         conn = HTTPConnection(UPSTREAM_HOST, port, timeout=30)
         try:
             conn.request(self.command, path, body=body, headers=headers)
