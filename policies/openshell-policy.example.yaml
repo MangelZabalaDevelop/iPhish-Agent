@@ -1,0 +1,100 @@
+preset:
+  name: iphish-agent-local
+  description: "Bound iPhish Agent to the local model endpoint and local campaign-review services."
+
+network_policies:
+  local_vllm:
+    name: local-openai-compatible-model
+    endpoints:
+      - host: 127.0.0.1
+        port: 9494
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: GET, path: "/v1/models" }
+          - allow: { method: POST, path: "/v1/chat/completions" }
+          - allow: { method: POST, path: "/v1/completions" }
+    binaries:
+      - path: /usr/local/bin/openclaw
+      - path: /usr/bin/curl
+      - path: /usr/bin/python3
+      - path: /usr/local/bin/python3
+
+  gophish_admin:
+    name: local-gophish-admin-api
+    endpoints:
+      - host: 127.0.0.1
+        port: 3333
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: GET, path: "/api/**" }
+          - allow: { method: POST, path: "/api/**" }
+          - allow: { method: PUT, path: "/api/**" }
+    binaries:
+      - path: /usr/local/bin/openclaw
+      - path: /usr/bin/curl
+      - path: /usr/bin/python3
+      - path: /usr/local/bin/python3
+
+  gophish_landing:
+    name: local-gophish-landing-review
+    endpoints:
+      - host: 127.0.0.1
+        port: 8080
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: GET, path: "/**" }
+          - allow: { method: POST, path: "/**" }
+    binaries:
+      - path: /usr/local/bin/openclaw
+      - path: /usr/bin/curl
+      - path: /usr/bin/python3
+      - path: /usr/local/bin/python3
+
+  mailpit_review:
+    name: local-mailpit-review
+    endpoints:
+      - host: 127.0.0.1
+        port: 8025
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: GET, path: "/**" }
+    binaries:
+      - path: /usr/local/bin/openclaw
+      - path: /usr/bin/curl
+      - path: /usr/bin/python3
+      - path: /usr/local/bin/python3
+
+  mailpit_smtp:
+    name: local-mailpit-smtp-sink
+    endpoints:
+      - host: 127.0.0.1
+        port: 1025
+        protocol: tcp
+        enforcement: enforce
+    binaries:
+      - path: /usr/local/bin/openclaw
+      - path: /usr/bin/python3
+      - path: /usr/local/bin/python3
+
+  comfyui_local:
+    name: local-comfyui-image-generation
+    endpoints:
+      - host: 127.0.0.1
+        port: 8188
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: GET, path: "/system_stats" }
+          - allow: { method: GET, path: "/queue" }
+          - allow: { method: GET, path: "/history/**" }
+          - allow: { method: GET, path: "/view" }
+          - allow: { method: POST, path: "/prompt" }
+    binaries:
+      - path: /usr/local/bin/openclaw
+      - path: /usr/bin/curl
+      - path: /usr/bin/python3
+      - path: /usr/local/bin/python3
