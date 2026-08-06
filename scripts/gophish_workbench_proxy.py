@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sys
+import re
 import mimetypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.client import HTTPConnection
@@ -73,9 +74,19 @@ class GoPhishProxy(BaseHTTPRequestHandler):
     def rewrite_body(self, body, content_type, prefix):
         is_html = content_type.startswith("text/html")
         is_javascript = "javascript" in content_type
-        if not is_html and not is_javascript:
+        is_css = content_type.startswith("text/css")
+        if not is_html and not is_javascript and not is_css:
             return body
         text = body.decode("utf-8", errors="replace")
+        if is_css:
+            # Stylesheet asset references (e.g. Font Awesome / Glyphicons
+            # webfonts) are absolute ("/font/...") or relative to the css
+            # dir ("../font/...") and would otherwise miss the prefix.
+            text = text.replace("url(/font/", f"url({prefix}/font/")
+            text = text.replace("url('../font/", f"url('{prefix}/font/")
+            text = text.replace('url("../font/', f'url("{prefix}/font/')
+            text = text.replace("url(../font/", f"url({prefix}/font/")
+            return text.encode("utf-8")
         if is_html:
             replacements = {
                 'href="/': f'href="{prefix}/',
@@ -86,24 +97,70 @@ class GoPhishProxy(BaseHTTPRequestHandler):
             for old, new in replacements.items():
                 text = text.replace(old, new)
 
-        root_paths = (
-            "api",
-            "campaigns",
-            "groups",
-            "templates",
-            "landing_pages",
-            "sending_profiles",
-            "settings",
-            "users",
-            "webhooks",
-            "login",
-            "logout",
-            "impersonate",
-        )
-        for root_path in root_paths:
-            text = text.replace(f'"/{root_path}', f'"{prefix}/{root_path}')
-            text = text.replace(f"'/{root_path}", f"'{prefix}/{root_path}")
+            root_paths = (
+                "api",
+                "campaigns",
+                "groups",
+                "templates",
+                "landing_pages",
+                "sending_profiles",
+                "settings",
+                "users",
+                "webhooks",
+                "login",
+                "logout",
+                "impersonate",
+            )
+            for root_path in root_paths:
+                text = text.replace(f'"/{root_path}', f'"{prefix}/{root_path}')
+                text = text.replace(f"'/{root_path}", f"'{prefix}/{root_path}")
+        else:
+            # JavaScript: the admin app builds API URLs as apiBase +
+            # endpoint (e.g. "/api" + "/campaigns/summary"). Prefix the
+            # base here; the endpoints appended to it must stay untouched
+            # or the workbench prefix would be duplicated and every data
+            # load (dashboard, campaigns, groups, ...) 404s.
+            text = text.replace('"/api', f'"{prefix}/api')
+            text = text.replace("'/api", f"'{prefix}/api")
+
+            # Prefix named root paths used for navigation or direct server
+            # routes (window.location, location.href, $.post, fetch,
+            # url:"/..."), but never endpoint literals passed to the
+            # query() helper: those are concatenated onto the prefixed
+            # /api base by the app itself.
+            root_paths = (
+                "campaigns",
+                "groups",
+                "templates",
+                "landing_pages",
+                "sending_profiles",
+                "settings",
+                "users",
+                "webhooks",
+                "login",
+                "logout",
+                "impersonate",
+            )
+            for root_path in root_paths:
+                text = re.sub(
+                    r'(?<!query\()"/' + re.escape(root_path),
+                    lambda m, rp=root_path: '"' + prefix + "/" + rp,
+                    text,
+                )
+                text = re.sub(
+                    r"(?<!query\()'/" + re.escape(root_path),
+                    lambda m, rp=root_path: "'" + prefix + "/" + rp,
+                    text,
+                )
+
+            # Home-path navigation (e.g. users redirecting to "/" after a
+            # delete) does not match a named root path.
+            text = text.replace('window.location.href="/"', 'window.location.href="' + prefix + '/"')
+            text = text.replace("window.location.href='/'", "window.location.href='" + prefix + "/'")
+            text = text.replace('location.href="/"', 'location.href="' + prefix + '/"')
+            text = text.replace('window.location="/"', 'window.location="' + prefix + '/"')
         return text.encode("utf-8")
+
 
     def serve_asset(self, include_body=True):
         path = urlsplit(self.path).path
@@ -146,7 +203,7 @@ class GoPhishProxy(BaseHTTPRequestHandler):
             resp = conn.getresponse()
             data = resp.read()
             content_type = resp.getheader("Content-Type", "")
-            no_store = content_type.startswith("text/html") or "javascript" in content_type
+            no_store = content_type.startswith("text/html") or "javascript" in content_type or content_type.startswith("text/css") or "font/" in content_type
             data = self.rewrite_body(data, content_type, prefix)
 
             self.send_response(resp.status, resp.reason)
